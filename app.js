@@ -1230,6 +1230,22 @@ window.addEventListener('keydown', enterKiosk, { once: true });
 window.addEventListener('pointerdown', ensureKiosk);
 window.addEventListener('keydown', ensureKiosk);
 
+// Hold Esc for 1.5s to exit kiosk — browser native hold-Esc isn't reliable
+// once keyboard.lock() has captured the key, so we DIY it.
+const ESC_HOLD_MS = 1500;
+let escHoldTimer = null;
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.repeat || escHoldTimer) return;
+  escHoldTimer = setTimeout(() => {
+    escHoldTimer = null;
+    exitKiosk();
+  }, ESC_HOLD_MS);
+}, true);
+window.addEventListener('keyup', (e) => {
+  if (e.key !== 'Escape') return;
+  if (escHoldTimer) { clearTimeout(escHoldTimer); escHoldTimer = null; }
+}, true);
+
 // ─── INIT ───────────────────────────────────────────────────────────────────
 
 applyTheme();

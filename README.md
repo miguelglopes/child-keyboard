@@ -53,7 +53,10 @@ On the first key or tap, the app enters fullscreen and calls the [Keyboard Lock 
 **What this blocks (on Chromium: Chrome, Edge, Vivaldi, Brave):**
 - Esc, F11, F12 — fire as `keydown` events but don't exit fullscreen.
 - Alt+Tab, ⊞ Win / ⌘ Cmd, browser shortcuts — captured by the page, the OS doesn't act on them.
-- The only way out is to **hold Esc for ~2 seconds** (browser-enforced safety) or use the parent gate to exit via settings.
+
+**Ways out** (for the parent):
+- **Hold Esc for 1.5 seconds** — exits cleanly and stays out (won't re-enter on the next keypress).
+- **Parent gate** — hold the top-left corner for 3 seconds, press the prompted number, then toggle the Fullscreen button in settings.
 
 **What it doesn't block:**
 - Firefox / Safari — no Keyboard Lock support. The app still enters fullscreen and re-enters on the next user gesture if the kid manages to escape, but keys aren't captured. Use OS-level lock-down here.
