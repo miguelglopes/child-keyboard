@@ -48,17 +48,18 @@ python3 -m http.server 8000
 
 ## Locking down for kids
 
-The app does what it can from inside the browser, but webpages can't fully kiosk a device — for that, use OS-level tools.
+On the first key or tap, the app enters fullscreen and calls the [Keyboard Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Keyboard/lock) to capture keys that would normally exit. The kid can keysmash all they want without escaping.
 
-**What the app handles:**
-- Swallows all keypresses inside the page so Tab, function keys, and most shortcuts do nothing.
-- If the tab loses visibility or the app leaves fullscreen, it pauses (sound stops, animations freeze) and shows a "Tap to continue" overlay. A parent tap resumes and re-enters fullscreen.
-- Kid keysmashing while paused does nothing — only a deliberate tap resumes.
+**What this blocks (on Chromium: Chrome, Edge, Vivaldi, Brave):**
+- Esc, F11, F12 — fire as `keydown` events but don't exit fullscreen.
+- Alt+Tab, ⊞ Win / ⌘ Cmd, browser shortcuts — captured by the page, the OS doesn't act on them.
+- The only way out is to **hold Esc for ~2 seconds** (browser-enforced safety) or use the parent gate to exit via settings.
 
-**What the browser won't let us block** (and how to handle it):
-- ⊞ Win / ⌘ Cmd keys, Alt+Tab, OS-level gestures — these never reach the page.
-- Fullscreen exit via Esc / F11 — we detect it and pause, but can't prevent it.
-- For real lock-down:
-  - **iOS / iPadOS** — Guided Access (Settings → Accessibility → Guided Access).
-  - **Android** — Screen pinning (Settings → Security → Screen pinning).
-  - **Desktop** — install as a PWA + use OS kiosk mode (varies by OS).
+**What it doesn't block:**
+- Firefox / Safari — no Keyboard Lock support. The app still enters fullscreen and re-enters on the next user gesture if the kid manages to escape, but keys aren't captured. Use OS-level lock-down here.
+- The device's hardware Home/Power buttons.
+
+**OS-level lock-down (recommended for tablets):**
+- **iOS / iPadOS** — Guided Access (Settings → Accessibility → Guided Access).
+- **Android** — Screen pinning (Settings → Security → Screen pinning).
+- **Desktop** — install as a PWA; OS kiosk mode varies.
