@@ -14,7 +14,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=22" />
 </head>
 <body class="theme-rainbow" tabindex="0">
 
@@ -49,7 +49,10 @@
 
   <div id="counter" aria-hidden="true">0</div>
 
-  <button id="parent-corner" aria-label="Parent gate"></button>
+  <button id="parent-corner" aria-label="Parent gate">
+    <span class="corner-dot" aria-hidden="true">⚙</span>
+    <span class="corner-hint" data-i18n="hold_hint"></span>
+  </button>
 
   <dialog id="parent-gate">
     <form method="dialog" id="parent-gate-form">
@@ -165,6 +168,6 @@
 
   <div id="confetti" aria-hidden="true"></div>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

@@ -108,6 +108,7 @@ const PHRASES = {
     stats_keys: 'Keys', stats_words: 'Words', stats_math: 'Math wins', stats_levelups: 'Level-ups',
     stats_bonus: 'Bonus rounds',
     bonus_label: 'NAME IT',
+    hold_hint: 'Hold 3s',
   },
   pt: {
     word: 'PALAVRA', math: 'MATEMÁTICA',
@@ -127,6 +128,7 @@ const PHRASES = {
     stats_keys: 'Teclas', stats_words: 'Palavras', stats_math: 'Contas certas', stats_levelups: 'Subidas de nível',
     stats_bonus: 'Rondas bónus',
     bonus_label: 'ADIVINHA',
+    hold_hint: 'Segura 3s',
   },
 };
 
