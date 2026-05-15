@@ -1,0 +1,14 @@
+{
+  "name": "Child Keyboard",
+  "short_name": "ChildKb",
+  "description": "Safe keyboard playground for kids from baby to ~10yo. Press keys, see animals, learn letters, words and math.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#1a1230",
+  "theme_color": "#1a1230",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

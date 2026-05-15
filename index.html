@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#1a1230" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Child Keyboard</title>
+  <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="pragma" content="no-cache" />
+  <meta http-equiv="expires" content="0" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="stylesheet" href="styles.css?v=17" />
+</head>
+<body class="theme-rainbow" tabindex="0">
+
+  <div id="bg" aria-hidden="true">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="blob b3"></div>
+    <div class="blob b4"></div>
+    <div class="blob b5"></div>
+    <div id="bg-particles"></div>
+  </div>
+
+  <div id="stage" aria-hidden="true"></div>
+
+  <div id="word-quest" class="quest" aria-hidden="true">
+    <div class="quest-label">
+      <span data-i18n="word"></span>
+      <span class="quest-level" id="word-level"></span>
+    </div>
+    <div class="quest-body" id="word-body"></div>
+  </div>
+
+  <div id="math-quest" class="quest" aria-hidden="true">
+    <div class="quest-label">
+      <span data-i18n="math"></span>
+      <span class="quest-level" id="math-level"></span>
+    </div>
+    <div class="quest-body" id="math-body"></div>
+  </div>
+
+  <div id="bonus-quest" aria-hidden="true"></div>
+
+  <div id="counter" aria-hidden="true">0</div>
+
+  <button id="parent-corner" aria-label="Parent gate"></button>
+
+  <dialog id="parent-gate">
+    <form method="dialog" id="parent-gate-form">
+      <h2 data-i18n="parent_check"></h2>
+      <p data-i18n="parent_prompt"></p>
+      <div id="parent-prompt-key"></div>
+      <div class="parent-buttons">
+        <button value="cancel" data-i18n="cancel"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings">
+    <form method="dialog" id="settings-form">
+      <h2 data-i18n="settings"></h2>
+
+      <label>
+        <span data-i18n="language"></span>
+        <select id="set-lang">
+          <option value="en">English</option>
+          <option value="pt">Português</option>
+        </select>
+      </label>
+
+      <label>
+        <span data-i18n="theme"></span>
+        <select id="set-theme">
+          <option value="rainbow">Rainbow</option>
+          <option value="space">Space</option>
+          <option value="ocean">Ocean</option>
+          <option value="jungle">Jungle</option>
+        </select>
+      </label>
+
+      <label class="toggle">
+        <input type="checkbox" id="set-sound" />
+        <span data-i18n="sound"></span>
+      </label>
+
+      <label class="toggle">
+        <input type="checkbox" id="set-voice" />
+        <span data-i18n="voice"></span>
+      </label>
+
+      <label>
+        <span data-i18n="voice_pick"></span>
+        <select id="set-voice-pick">
+          <option value="" data-i18n-opt="auto"></option>
+        </select>
+      </label>
+
+      <button id="btn-test-voice" type="button" data-i18n="test_voice"></button>
+
+      <label class="toggle">
+        <input type="checkbox" id="set-quests" />
+        <span data-i18n="show_quests"></span>
+      </label>
+
+      <label class="toggle">
+        <input type="checkbox" id="set-reduce-motion" />
+        <span data-i18n="reduce_motion"></span>
+      </label>
+
+      <label>
+        <span data-i18n="word_difficulty"></span>
+        <select id="set-word-diff">
+          <option value="auto" data-i18n-opt="auto"></option>
+          <option value="0">Lv 1 — cards (tap)</option>
+          <option value="1">Lv 2 — pulse</option>
+          <option value="2">Lv 3 — no pulse</option>
+          <option value="3">Lv 4 — emoji + blanks</option>
+          <option value="4">Lv 5 — emoji only</option>
+        </select>
+      </label>
+
+      <label>
+        <span data-i18n="math_difficulty"></span>
+        <select id="set-math-diff">
+          <option value="auto" data-i18n-opt="auto"></option>
+          <option value="0">Lv 1 — 1+1</option>
+          <option value="1">Lv 2 — +</option>
+          <option value="2">Lv 3 — + −</option>
+          <option value="3">Lv 4 — + − ×</option>
+          <option value="4">Lv 5 — + − × ÷</option>
+        </select>
+      </label>
+
+      <div class="stats-block">
+        <h3 data-i18n="stats"></h3>
+        <table class="stats-table">
+          <thead>
+            <tr><th></th><th data-i18n="today"></th><th data-i18n="all_time"></th></tr>
+          </thead>
+          <tbody>
+            <tr><td data-i18n="stats_keys"></td><td id="st-today-keys">0</td><td id="st-all-keys">0</td></tr>
+            <tr><td data-i18n="stats_words"></td><td id="st-today-words">0</td><td id="st-all-words">0</td></tr>
+            <tr><td data-i18n="stats_math"></td><td id="st-today-math">0</td><td id="st-all-math">0</td></tr>
+            <tr><td data-i18n="stats_levelups"></td><td id="st-today-levelups">0</td><td id="st-all-levelups">0</td></tr>
+            <tr><td data-i18n="stats_bonus"></td><td id="st-today-bonus">0</td><td id="st-all-bonus">0</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="settings-buttons">
+        <button id="btn-fullscreen" type="button" data-i18n="fullscreen"></button>
+        <button id="btn-reset" type="button" data-i18n="reset_counter"></button>
+        <button value="close" data-i18n="close"></button>
+      </div>
+
+      <p class="hint" data-i18n="exit_hint"></p>
+    </form>
+  </dialog>
+
+  <div id="confetti" aria-hidden="true"></div>
+
+  <script src="app.js?v=17"></script>
+</body>
+</html>
