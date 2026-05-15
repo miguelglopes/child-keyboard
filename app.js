@@ -108,6 +108,8 @@ const PHRASES = {
     stats_keys: 'Keys', stats_words: 'Words', stats_math: 'Math wins', stats_levelups: 'Level-ups',
     stats_bonus: 'Bonus rounds',
     bonus_label: 'NAME IT',
+    paused: 'Paused',
+    tap_to_continue: 'Tap to continue',
   },
   pt: {
     word: 'PALAVRA', math: 'MATEMÁTICA',
@@ -127,6 +129,8 @@ const PHRASES = {
     stats_keys: 'Teclas', stats_words: 'Palavras', stats_math: 'Contas certas', stats_levelups: 'Subidas de nível',
     stats_bonus: 'Rondas bónus',
     bonus_label: 'ADIVINHA',
+    paused: 'Em pausa',
+    tap_to_continue: 'Toca para continuar',
   },
 };
 
@@ -183,6 +187,7 @@ const parentCorner = document.getElementById('parent-corner');
 const parentGate = document.getElementById('parent-gate');
 const settingsDialog = document.getElementById('settings');
 const parentPromptKey = document.getElementById('parent-prompt-key');
+const pauseOverlay = document.getElementById('pause-overlay');
 
 // ─── I18N ───────────────────────────────────────────────────────────────────
 
@@ -908,13 +913,19 @@ window.addEventListener('keydown', e => {
     if (e.key === 'Escape') return; // let dialog close natively
     return;
   }
+  // Paused: swallow but don't act
+  if (paused) {
+    e.preventDefault();
+    return;
+  }
   e.preventDefault();
   handleKey(e.key);
 });
 
 // Pointer/touch on stage = random key
 window.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('button, dialog, label, select, input, [data-key]')) return;
+  if (paused) return;
+  if (e.target.closest('button, dialog, label, select, input, [data-key], #pause-overlay')) return;
   const keys = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   handleKey(keys[Math.floor(Math.random() * keys.length)]);
 });
@@ -957,6 +968,54 @@ function openParentGate() {
   window.addEventListener('keydown', handler, true);
   parentGate.addEventListener('close', () => window.removeEventListener('keydown', handler, true), { once: true });
 }
+
+// ─── PAUSE / RESUME ─────────────────────────────────────────────────────────
+//
+// Browsers won't let a PWA block OS keys / Alt-Tab / fullscreen exit. So we
+// don't try — we just detect when the kid drifts away (tab hidden, fullscreen
+// dropped) and freeze cleanly, then require a tap to come back. The overlay
+// is what gives parents a clean recovery instead of a half-paused mess.
+
+let paused = false;
+
+function pause() {
+  if (paused) return;
+  // Dialogs are an intentional pause already — don't double-overlay them.
+  if (parentGate.open || settingsDialog.open) return;
+  paused = true;
+  document.body.classList.add('paused');
+  pauseOverlay.setAttribute('aria-hidden', 'false');
+  try { audioCtx?.suspend(); } catch {}
+  window.speechSynthesis?.cancel();
+  // In-progress bonus has a setTimeout we can't pause cleanly — drop it.
+  if (state.bonus) closeBonus();
+}
+
+function resume() {
+  if (!paused) return;
+  paused = false;
+  document.body.classList.remove('paused');
+  pauseOverlay.setAttribute('aria-hidden', 'true');
+  try { audioCtx?.resume(); } catch {}
+  // The tap that called us is a user gesture — re-request fullscreen if we lost it.
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  }
+}
+
+pauseOverlay.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  resume();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') pause();
+});
+
+document.addEventListener('fullscreenchange', () => {
+  // Just left fullscreen without a dialog open? Treat as escape attempt.
+  if (!document.fullscreenElement) pause();
+});
 
 // ─── SETTINGS ───────────────────────────────────────────────────────────────
 

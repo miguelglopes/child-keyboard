@@ -48,6 +48,17 @@ python3 -m http.server 8000
 
 ## Locking down for kids
 
-- **iOS / iPadOS**: enable Guided Access (Settings → Accessibility → Guided Access).
-- **Android**: enable Screen pinning (Settings → Security → Screen pinning).
-- **Desktop**: use the in-app Fullscreen button. ⊞ Win / Cmd keys can't be blocked from a webpage.
+The app does what it can from inside the browser, but webpages can't fully kiosk a device — for that, use OS-level tools.
+
+**What the app handles:**
+- Swallows all keypresses inside the page so Tab, function keys, and most shortcuts do nothing.
+- If the tab loses visibility or the app leaves fullscreen, it pauses (sound stops, animations freeze) and shows a "Tap to continue" overlay. A parent tap resumes and re-enters fullscreen.
+- Kid keysmashing while paused does nothing — only a deliberate tap resumes.
+
+**What the browser won't let us block** (and how to handle it):
+- ⊞ Win / ⌘ Cmd keys, Alt+Tab, OS-level gestures — these never reach the page.
+- Fullscreen exit via Esc / F11 — we detect it and pause, but can't prevent it.
+- For real lock-down:
+  - **iOS / iPadOS** — Guided Access (Settings → Accessibility → Guided Access).
+  - **Android** — Screen pinning (Settings → Security → Screen pinning).
+  - **Desktop** — install as a PWA + use OS kiosk mode (varies by OS).
