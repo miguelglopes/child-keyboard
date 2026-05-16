@@ -7,14 +7,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Child Keyboard</title>
+  <title>FunKeyboard</title>
   <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="pragma" content="no-cache" />
   <meta http-equiv="expires" content="0" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=22" />
+  <link rel="stylesheet" href="styles.css?v=32" />
 </head>
 <body class="theme-rainbow" tabindex="0">
 
@@ -28,6 +28,8 @@
   </div>
 
   <div id="stage" aria-hidden="true"></div>
+
+  <div id="rain" aria-hidden="true"></div>
 
   <div id="word-quest" class="quest" aria-hidden="true">
     <div class="quest-label">
@@ -59,6 +61,17 @@
       <h2 data-i18n="parent_check"></h2>
       <p data-i18n="parent_prompt"></p>
       <div id="parent-prompt-key"></div>
+      <div id="parent-keypad">
+        <button type="button" data-digit="1">1</button>
+        <button type="button" data-digit="2">2</button>
+        <button type="button" data-digit="3">3</button>
+        <button type="button" data-digit="4">4</button>
+        <button type="button" data-digit="5">5</button>
+        <button type="button" data-digit="6">6</button>
+        <button type="button" data-digit="7">7</button>
+        <button type="button" data-digit="8">8</button>
+        <button type="button" data-digit="9">9</button>
+      </div>
       <div class="parent-buttons">
         <button value="cancel" data-i18n="cancel"></button>
       </div>
@@ -80,21 +93,23 @@
       <label>
         <span data-i18n="theme"></span>
         <select id="set-theme">
+          <option value="auto" data-i18n-opt="auto"></option>
           <option value="rainbow">Rainbow</option>
           <option value="space">Space</option>
           <option value="ocean">Ocean</option>
           <option value="jungle">Jungle</option>
+          <option value="baby">Baby</option>
         </select>
       </label>
 
       <label class="toggle">
-        <input type="checkbox" id="set-sound" />
         <span data-i18n="sound"></span>
+        <input type="checkbox" id="set-sound" />
       </label>
 
       <label class="toggle">
-        <input type="checkbox" id="set-voice" />
         <span data-i18n="voice"></span>
+        <input type="checkbox" id="set-voice" />
       </label>
 
       <label>
@@ -104,16 +119,33 @@
         </select>
       </label>
 
-      <button id="btn-test-voice" type="button" data-i18n="test_voice"></button>
+      <div class="settings-row-action">
+        <button id="btn-test-voice" type="button" data-i18n="test_voice"></button>
+      </div>
 
       <label class="toggle">
-        <input type="checkbox" id="set-quests" />
-        <span data-i18n="show_quests"></span>
+        <span data-i18n="fullscreen"></span>
+        <input type="checkbox" id="set-fullscreen" />
       </label>
 
       <label class="toggle">
-        <input type="checkbox" id="set-reduce-motion" />
+        <span data-i18n="show_quests"></span>
+        <input type="checkbox" id="set-quests" />
+      </label>
+
+      <label class="toggle">
+        <span data-i18n="falling_letters"></span>
+        <input type="checkbox" id="set-falling-letters" />
+      </label>
+
+      <label class="toggle">
         <span data-i18n="reduce_motion"></span>
+        <input type="checkbox" id="set-reduce-motion" />
+      </label>
+
+      <label class="toggle">
+        <span data-i18n="reduce_effects"></span>
+        <input type="checkbox" id="set-reduce-effects" />
       </label>
 
       <label>
@@ -157,7 +189,6 @@
       </div>
 
       <div class="settings-buttons">
-        <button id="btn-fullscreen" type="button" data-i18n="fullscreen"></button>
         <button id="btn-reset" type="button" data-i18n="reset_counter"></button>
         <button value="close" data-i18n="close"></button>
       </div>
@@ -168,6 +199,6 @@
 
   <div id="confetti" aria-hidden="true"></div>
 
-  <script src="app.js?v=21"></script>
+  <script src="app.js?v=32"></script>
 </body>
 </html>

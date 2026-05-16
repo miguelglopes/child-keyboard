@@ -1,3 +1,10 @@
+// ─── PLATFORM ───────────────────────────────────────────────────────────────
+// Runtime detection so the same bundle works in a desktop browser and in an
+// LG webOS app. webOS apps are already fullscreen and have no Esc key, so the
+// kiosk/keyboard-lock code is skipped there (see KIOSK section below).
+
+const isWebOS = !!window.PalmSystem || /web0s|webos/i.test(navigator.userAgent);
+
 // ─── UTILS ──────────────────────────────────────────────────────────────────
 
 function normalize(s) {
@@ -39,14 +46,15 @@ const LETTERS = {
   pt: {
     A: [['Abelha', '🐝'], ['Avião', '✈️'], ['Árvore', '🌳']],
     B: [['Bola', '⚽'], ['Bicicleta', '🚲'], ['Banana', '🍌']],
-    C: [['Cão', '🐕'], ['Casa', '🏠'], ['Cavalo', '🐴']],
+    C: [['Cão', '🐕'], ['Casa', '🏠'], ['Cavalo', '🐴'], ['Comboio', '🚂']],
+    Ç: [['Maçã', '🍎'], ['Coração', '❤️'], ['Rebuçado', '🍬']],
     D: [['Dinossauro', '🦖'], ['Dado', '🎲']],
     E: [['Elefante', '🐘'], ['Estrela', '⭐'], ['Escola', '🏫']],
     F: [['Foca', '🦭'], ['Flor', '🌸'], ['Fogo', '🔥']],
     G: [['Girafa', '🦒'], ['Gato', '🐈'], ['Galinha', '🐔']],
     H: [['Hipopótamo', '🦛'], ['Hambúrguer', '🍔']],
     I: [['Iguana', '🦎'], ['Ilha', '🏝️']],
-    J: [['Joaninha', '🐞'], ['Jacaré', '🐊']],
+    J: [['Joaninha', '🐞'], ['Janela', '🪟']],
     K: [['Koala', '🐨']],
     L: [['Leão', '🦁'], ['Lua', '🌙'], ['Limão', '🍋']],
     M: [['Macaco', '🐒'], ['Mar', '🌊'], ['Maçã', '🍎']],
@@ -56,7 +64,7 @@ const LETTERS = {
     Q: [['Queijo', '🧀'], ['Quadro', '🖼️']],
     R: [['Rato', '🐭'], ['Rosa', '🌹'], ['Rio', '🏞️']],
     S: [['Sapo', '🐸'], ['Sol', '☀️'], ['Serpente', '🐍']],
-    T: [['Tartaruga', '🐢'], ['Tigre', '🐯'], ['Trem', '🚂']],
+    T: [['Tartaruga', '🐢'], ['Tigre', '🐯'], ['Tubarão', '🦈']],
     U: [['Urso', '🐻'], ['Uva', '🍇']],
     V: [['Vaca', '🐄'], ['Violino', '🎻'], ['Vulcão', '🌋']],
     W: [['Waffle', '🧇']],
@@ -95,7 +103,9 @@ const PHRASES = {
     praise: ['Yay!', 'Awesome!', 'Wow!', 'Great!', 'Amazing!', 'Yes!'],
     tryAgain: ['Try again!', 'Almost!'],
     settings: 'Settings', language: 'Language', theme: 'Theme',
-    sound: 'Sound', voice: 'Voice', show_quests: 'Show quests', reduce_motion: 'Reduce motion',
+    sound: 'Sound', voice: 'Voice', show_quests: 'Show quests',
+    falling_letters: 'Falling letters', reduce_motion: 'Reduce motion',
+    reduce_effects: 'Reduce effects',
     word_difficulty: 'Word difficulty', math_difficulty: 'Math difficulty',
     fullscreen: 'Fullscreen', reset_counter: 'Reset counter', close: 'Close',
     parent_check: 'Parent check', parent_prompt: 'Press this key to continue',
@@ -115,7 +125,9 @@ const PHRASES = {
     praise: ['Boa!', 'Excelente!', 'Uau!', 'Fantástico!', 'Sim!', 'Boa!'],
     tryAgain: ['Quase!', 'Tenta!'],
     settings: 'Definições', language: 'Idioma', theme: 'Tema',
-    sound: 'Som', voice: 'Voz', show_quests: 'Mostrar desafios', reduce_motion: 'Reduzir movimento',
+    sound: 'Som', voice: 'Voz', show_quests: 'Mostrar desafios',
+    falling_letters: 'Letras que caem', reduce_motion: 'Reduzir movimento',
+    reduce_effects: 'Reduzir efeitos',
     word_difficulty: 'Dificuldade palavras', math_difficulty: 'Dificuldade matemática',
     fullscreen: 'Ecrã inteiro', reset_counter: 'Reiniciar contador', close: 'Fechar',
     parent_check: 'Verificação adulto', parent_prompt: 'Carrega nesta tecla para continuar',
@@ -136,11 +148,13 @@ const PHRASES = {
 
 const DEFAULTS = {
   lang: 'pt',
-  theme: 'rainbow',
+  theme: 'auto',
   sound: true,
   voice: true,
   quests: true,
+  fallingLetters: true,
   reduceMotion: false,
+  reduceEffects: isWebOS,
   wordDiff: 'auto',
   mathDiff: 'auto',
   ptVoice: '', // manual voice key "name|lang", empty = auto
@@ -173,6 +187,13 @@ function saveSettings() {
 }
 
 const settings = loadSettings();
+
+// Tracks the visually-active theme. In 'auto' mode, mutated by maybeSwitchTheme
+// as the child triggers theme letters; in fixed mode, kept in sync by applyTheme.
+let currentTheme = 'rainbow';
+function effectiveTheme() {
+  return settings.theme === 'auto' ? currentTheme : settings.theme;
+}
 
 // ─── DOM ────────────────────────────────────────────────────────────────────
 
@@ -259,20 +280,30 @@ function noise(dur = 0.08, gain = 0.15) {
 // Theme-specific letter/digit voicings
 function letterTone(letter) {
   const idx = letter.charCodeAt(0) - 65;
-  const theme = settings.theme;
+  const theme = effectiveTheme();
   if (theme === 'space')   return spaceZap(idx);
   if (theme === 'ocean')   return bubblePop(idx);
   if (theme === 'jungle')  return jungleDrum(idx);
+  if (theme === 'baby')    return babyDing(idx);
   return rainbowBell(idx);
 }
 
 function digitTone(digit) {
-  const theme = settings.theme;
+  const theme = effectiveTheme();
   if (theme === 'space')   return spaceZap(digit + 13);
   if (theme === 'ocean')   return bubblePop(digit + 6);
   if (theme === 'jungle')  return jungleDrum(digit);
+  if (theme === 'baby')    return babyDing(digit + 13);
   // rainbow default
   beep(220 + digit * 30, 0.15, 'sine', 0.16);
+}
+
+function babyDing(idx) {
+  // Two-note soft sine: low gain, narrow pitch range, long-ish decay.
+  // Calmer than rainbow bells and quieter than zaps/drums.
+  const BASE = [261.63, 329.63, 392.00, 440.00, 523.25];
+  const note = BASE[idx % BASE.length];
+  beep(note, 0.32, 'sine', 0.08);
 }
 
 function rainbowBell(idx) {
@@ -454,6 +485,10 @@ function record(kind) {
 
 let spawnSeed = 0;
 const SPAWN_VARIANTS = ['pop', 'drop', 'spin', 'flip'];
+// If set, the next spawn() places the element at this {x,y} percentage instead
+// of randomizing. Consumed once. Used by rain-bubble pops so the letter+animal
+// appears where the bubble was tapped.
+let spawnOriginOverride = null;
 function spawn(big, small) {
   const variant = SPAWN_VARIANTS[Math.floor(Math.random() * SPAWN_VARIANTS.length)];
   const el = document.createElement('div');
@@ -467,8 +502,14 @@ function spawn(big, small) {
   } else {
     el.innerHTML = `<span>${big}</span>` + (small ? `<span class="emoji">${small}</span>` : '');
   }
-  const x = 8 + Math.random() * 84;
-  const y = 22 + Math.random() * 56;
+  let x, y;
+  if (spawnOriginOverride) {
+    ({ x, y } = spawnOriginOverride);
+    spawnOriginOverride = null;
+  } else {
+    x = 8 + Math.random() * 84;
+    y = 22 + Math.random() * 56;
+  }
   el.style.left = x + '%';
   el.style.top = y + '%';
   stage.appendChild(el);
@@ -477,7 +518,10 @@ function spawn(big, small) {
 
 function confetti(n = 60) {
   if (settings.reduceMotion) n = Math.min(15, n);
-  const colors = ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93', '#ff924c', '#06d6a0'];
+  else if (settings.reduceEffects) n = Math.min(60, n);
+  const colors = effectiveTheme() === 'baby'
+    ? ['#ffffff', '#ff1f1f']
+    : ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93', '#ff924c', '#06d6a0'];
   for (let i = 0; i < n; i++) {
     const c = document.createElement('div');
     c.className = 'confetto';
@@ -838,7 +882,8 @@ function handleKey(rawKey) {
   if (/^[a-zA-ZÀ-ÿ]$/.test(rawKey)) {
     const up = rawKey.toUpperCase();
     const norm = normalize(up);
-    const data = pickLetterContent(norm);
+    // Look up by raw accented letter first (e.g. Ç has its own words), then fall back to normalized
+    const data = pickLetterContent(up) || pickLetterContent(norm);
     if (data) {
       spawn(up, data[1]);
       say(`${up}. ${data[0]}`);
@@ -914,9 +959,32 @@ window.addEventListener('keydown', e => {
   handleKey(e.key);
 });
 
-// Pointer/touch on stage = random key
+// Cursor trail — pretty colored orbs that drift up and fade. Throttled and
+// skipped under reduceEffects so the TV doesn't pay for it.
+const TRAIL_COLORS = ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93', '#ff924c', '#06d6a0'];
+let lastTrailAt = 0;
+window.addEventListener('pointermove', (e) => {
+  if (settings.reduceEffects) return;
+  if (parentGate.open || settingsDialog.open) return;
+  const now = performance.now();
+  if (now - lastTrailAt < 25) return;
+  lastTrailAt = now;
+  const t = document.createElement('div');
+  t.className = 'cursor-trail';
+  t.style.left = e.clientX + 'px';
+  t.style.top = e.clientY + 'px';
+  t.style.setProperty('--trail-c', TRAIL_COLORS[Math.floor(Math.random() * TRAIL_COLORS.length)]);
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 750);
+});
+
+// Pointer/touch on stage = random key, spawned at the pointer's location
 window.addEventListener('pointerdown', (e) => {
   if (e.target.closest('button, dialog, label, select, input, [data-key]')) return;
+  spawnOriginOverride = {
+    x: (e.clientX / window.innerWidth) * 100,
+    y: (e.clientY / window.innerHeight) * 100,
+  };
   const keys = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   handleKey(keys[Math.floor(Math.random() * keys.length)]);
 });
@@ -945,27 +1013,44 @@ function openParentGate() {
   promptedKey = String(randInt(1, 9));
   parentPromptKey.textContent = promptedKey;
   parentGate.showModal();
-  const handler = (e) => {
+
+  const unlock = () => {
+    window.removeEventListener('keydown', keyHandler, true);
+    parentGate.close();
+    openSettings();
+  };
+  const keyHandler = (e) => {
     if (e.key === promptedKey) {
       e.preventDefault();
       e.stopPropagation();
-      window.removeEventListener('keydown', handler, true);
-      parentGate.close();
-      openSettings();
+      unlock();
     } else if (e.key === 'Escape') {
-      window.removeEventListener('keydown', handler, true);
+      window.removeEventListener('keydown', keyHandler, true);
     }
   };
-  window.addEventListener('keydown', handler, true);
-  parentGate.addEventListener('close', () => window.removeEventListener('keydown', handler, true), { once: true });
+  const padHandler = (e) => {
+    const btn = e.target.closest('button[data-digit]');
+    if (!btn) return;
+    e.preventDefault();
+    if (btn.dataset.digit === promptedKey) unlock();
+  };
+  const keypad = document.getElementById('parent-keypad');
+  window.addEventListener('keydown', keyHandler, true);
+  keypad.addEventListener('click', padHandler);
+  parentGate.addEventListener('close', () => {
+    window.removeEventListener('keydown', keyHandler, true);
+    keypad.removeEventListener('click', padHandler);
+  }, { once: true });
 }
 
 // ─── SETTINGS ───────────────────────────────────────────────────────────────
 
 function applyTheme() {
-  document.body.className = 'theme-' + settings.theme +
+  if (settings.theme !== 'auto') currentTheme = settings.theme;
+  document.body.className = 'theme-' + effectiveTheme() +
     (settings.quests ? '' : ' no-quests') +
     (settings.reduceMotion ? ' reduce-motion' : '');
+  document.documentElement.classList.toggle('reduce-effects', settings.reduceEffects);
   document.documentElement.style.setProperty('--motion', settings.reduceMotion ? '0.4' : '1');
   renderBgParticles();
 }
@@ -992,22 +1077,19 @@ let lastThemeSwitchAt = 0;
 const themeHits = {};
 
 function maybeSwitchTheme(normLetter, wasQuestProgress) {
+  if (settings.theme !== 'auto') return;
   if (wasQuestProgress) return;
   const t = themeForLetter(normLetter);
-  if (!t || t === settings.theme) return;
+  if (!t || t === currentTheme) return;
 
   themeHits[t] = (themeHits[t] || 0) + 1;
   if (performance.now() - lastThemeSwitchAt < THEME_SWITCH_COOLDOWN_MS) return;
   if (themeHits[t] < THEME_HITS_REQUIRED) return;
 
-  settings.theme = t;
-  saveSettings();
+  currentTheme = t;
   applyTheme();
   lastThemeSwitchAt = performance.now();
   for (const k of Object.keys(themeHits)) themeHits[k] = 0;
-
-  const sel = document.getElementById('set-theme');
-  if (sel) sel.value = t;
 }
 
 // ─── BACKGROUND PARTICLES ──────────────────────────────────────────────────
@@ -1021,8 +1103,8 @@ function renderBgParticles() {
   if (shootingStarTimer) { clearTimeout(shootingStarTimer); shootingStarTimer = null; }
 
   // Even with reduce-motion, render a few static particles (no motion via CSS rule)
-  const density = settings.reduceMotion ? 0.4 : 1;
-  const theme = settings.theme;
+  const density = settings.reduceMotion ? 0.4 : (settings.reduceEffects ? 0.5 : 1);
+  const theme = effectiveTheme();
 
   if (theme === 'space') {
     const n = Math.floor(110 * density);
@@ -1035,7 +1117,7 @@ function renderBgParticles() {
       s.style.setProperty('--delay', (Math.random() * 4) + 's');
       container.appendChild(s);
     }
-    if (!settings.reduceMotion) scheduleShootingStar(container);
+    if (!settings.reduceMotion && !settings.reduceEffects) scheduleShootingStar(container);
   } else if (theme === 'ocean') {
     const n = Math.floor(16 * density);
     for (let i = 0; i < n; i++) {
@@ -1070,6 +1152,43 @@ function renderBgParticles() {
       l.style.setProperty('--size', (1.1 + Math.random() * 1) + 'rem');
       container.appendChild(l);
     }
+  } else if (theme === 'baby') {
+    // High-contrast newborn-vision scene: a small, deliberate composition
+    // (target + sun + moon + sparse stars) rather than random scatter.
+    // Inspired by Wee Gallery / Sassy infant board books — balanced, calm,
+    // with generous negative space.
+    const RED = '#e63946';
+    const scene = [
+      // Big white bullseye target — left, focal point
+      { cls: 'bullseye', size: 34, left: 14, top: 18, color: '#ffffff', dur: 11, delay: 0 },
+      // Red sunburst — right, mid
+      { cls: 'sunburst', size: 30, left: 70, top: 28, color: RED, dur: 110, delay: 0 },
+      // Solid white moon — bottom-left
+      { cls: 'disc', size: 14, left: 8, top: 70, color: '#ffffff', dur: 28, dx: 2, dy: -1, delay: -6 },
+      // Red checkerboard — bottom-right; different motif from the bullseye/sunburst
+      { cls: 'checker', size: 22, left: 78, top: 68, color: RED, dur: 12, delay: -3 },
+      // Sparse stars — small white dots, scattered but intentional
+      { cls: 'dot', size: 1.6, left: 48, top: 8,  color: '#ffffff', dur: 3.5, delay: 0 },
+      { cls: 'dot', size: 1.2, left: 92, top: 12, color: '#ffffff', dur: 5,   delay: -1 },
+      { cls: 'dot', size: 1.4, left: 38, top: 88, color: '#ffffff', dur: 4.2, delay: -2.5 },
+      { cls: 'dot', size: 1.0, left: 60, top: 92, color: '#ffffff', dur: 3.8, delay: -0.8 },
+      { cls: 'dot', size: 1.3, left: 4,  top: 42, color: '#ffffff', dur: 4.6, delay: -1.5 },
+    ];
+    // With reduce-motion we still want the composition — just no twinkle.
+    for (const s of scene) {
+      const el = document.createElement('div');
+      el.className = 'baby-shape ' + s.cls;
+      el.style.width = s.size + 'vmin';
+      el.style.height = s.size + 'vmin';
+      el.style.left = s.left + 'vw';
+      el.style.top = s.top + 'vh';
+      el.style.setProperty('--ring-color', s.color);
+      el.style.setProperty('--dur', s.dur + 's');
+      el.style.setProperty('--delay', s.delay + 's');
+      if (s.dx != null) el.style.setProperty('--dx', s.dx + 'vw');
+      if (s.dy != null) el.style.setProperty('--dy', s.dy + 'vh');
+      container.appendChild(el);
+    }
   } else {
     // rainbow: floating soap bubbles
     const n = Math.floor(22 * density);
@@ -1090,7 +1209,7 @@ function renderBgParticles() {
 
 function scheduleShootingStar(container) {
   shootingStarTimer = setTimeout(() => {
-    if (settings.theme !== 'space' || settings.reduceMotion) return;
+    if (effectiveTheme() !== 'space' || settings.reduceMotion || settings.reduceEffects) return;
     const s = document.createElement('div');
     s.className = 'shooting-star';
     s.style.top = (Math.random() * 40) + '%';
@@ -1132,7 +1251,10 @@ function openSettings() {
   document.getElementById('set-sound').checked = settings.sound;
   document.getElementById('set-voice').checked = settings.voice;
   document.getElementById('set-quests').checked = settings.quests;
+  document.getElementById('set-falling-letters').checked = settings.fallingLetters;
   document.getElementById('set-reduce-motion').checked = settings.reduceMotion;
+  document.getElementById('set-reduce-effects').checked = settings.reduceEffects;
+  document.getElementById('set-fullscreen').checked = !!document.fullscreenElement;
   document.getElementById('set-word-diff').value = settings.wordDiff;
   document.getElementById('set-math-diff').value = settings.mathDiff;
   rebuildVoicePicker();
@@ -1152,13 +1274,21 @@ function openSettings() {
 }
 
 document.getElementById('settings-form').addEventListener('change', (e) => {
+  // Fullscreen toggle is special: it's a runtime state, not a saved preference.
+  if (e.target.id === 'set-fullscreen') {
+    if (e.target.checked) enterKiosk(); else exitKiosk();
+    return;
+  }
+
   const prevLang = settings.lang;
   settings.lang = document.getElementById('set-lang').value;
   settings.theme = document.getElementById('set-theme').value;
   settings.sound = document.getElementById('set-sound').checked;
   settings.voice = document.getElementById('set-voice').checked;
   settings.quests = document.getElementById('set-quests').checked;
+  settings.fallingLetters = document.getElementById('set-falling-letters').checked;
   settings.reduceMotion = document.getElementById('set-reduce-motion').checked;
+  settings.reduceEffects = document.getElementById('set-reduce-effects').checked;
   settings.wordDiff = document.getElementById('set-word-diff').value;
   settings.mathDiff = document.getElementById('set-math-diff').value;
   const vp = document.getElementById('set-voice-pick').value;
@@ -1173,15 +1303,18 @@ document.getElementById('settings-form').addEventListener('change', (e) => {
   if (settings.lang !== prevLang || e.target.id === 'set-lang') rebuildVoicePicker();
 });
 
+// Keep the fullscreen checkbox in sync with the actual fullscreen state
+// (Esc, F11, OS-level exits all dispatch fullscreenchange).
+document.addEventListener('fullscreenchange', () => {
+  const cb = document.getElementById('set-fullscreen');
+  if (cb && settingsDialog.open) cb.checked = !!document.fullscreenElement;
+});
+
 document.getElementById('btn-test-voice').addEventListener('click', () => {
   const t = settings.lang === 'pt' ? 'Olá! Vamos brincar com letras.' : 'Hello! Let\'s play with letters.';
   say(t);
 });
 
-document.getElementById('btn-fullscreen').addEventListener('click', () => {
-  if (document.fullscreenElement) exitKiosk();
-  else enterKiosk();
-});
 document.getElementById('btn-reset').addEventListener('click', () => {
   setCount(0);
 });
@@ -1227,26 +1360,176 @@ async function exitKiosk() {
 }
 
 // First user gesture sets wants=true; the regular listener re-enters if it drops.
-window.addEventListener('pointerdown', enterKiosk, { once: true });
-window.addEventListener('keydown', enterKiosk, { once: true });
-window.addEventListener('pointerdown', ensureKiosk);
-window.addEventListener('keydown', ensureKiosk);
+// webOS apps are already fullscreen — no need to request it or listen for Esc.
+if (!isWebOS) {
+  window.addEventListener('pointerdown', enterKiosk, { once: true });
+  window.addEventListener('keydown', enterKiosk, { once: true });
+  window.addEventListener('pointerdown', ensureKiosk);
+  window.addEventListener('keydown', ensureKiosk);
 
-// Hold Esc for 1.5s to exit kiosk — browser native hold-Esc isn't reliable
-// once keyboard.lock() has captured the key, so we DIY it.
-const ESC_HOLD_MS = 1500;
-let escHoldTimer = null;
-window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || e.repeat || escHoldTimer) return;
-  escHoldTimer = setTimeout(() => {
-    escHoldTimer = null;
-    exitKiosk();
-  }, ESC_HOLD_MS);
-}, true);
-window.addEventListener('keyup', (e) => {
-  if (e.key !== 'Escape') return;
-  if (escHoldTimer) { clearTimeout(escHoldTimer); escHoldTimer = null; }
-}, true);
+  // Hold Esc for 1.5s to exit kiosk — browser native hold-Esc isn't reliable
+  // once keyboard.lock() has captured the key, so we DIY it.
+  const ESC_HOLD_MS = 1500;
+  let escHoldTimer = null;
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.repeat || escHoldTimer) return;
+    escHoldTimer = setTimeout(() => {
+      escHoldTimer = null;
+      exitKiosk();
+    }, ESC_HOLD_MS);
+  }, true);
+  window.addEventListener('keyup', (e) => {
+    if (e.key !== 'Escape') return;
+    if (escHoldTimer) { clearTimeout(escHoldTimer); escHoldTimer = null; }
+  }, true);
+}
+
+// ─── RAIN (falling letter/digit bubbles) ───────────────────────────────────
+
+const RAIN_INTERVAL_MS = 1700;
+const RAIN_MAX_ON_SCREEN = 9;
+const rainCap = () => settings.reduceEffects ? 5 : RAIN_MAX_ON_SCREEN;
+const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+let rainTimer = null;
+let rainCycle = 0;
+const rainContainer = document.getElementById('rain');
+
+function rainActive() {
+  if (!settings.fallingLetters) return false;
+  if (!settings.quests) return false;
+  if (parentGate.open || settingsDialog.open) return false;
+  return !!(state.word || state.eq || state.bonus);
+}
+
+function nextLetterKey() {
+  if (state.bonus) return state.bonus.word[state.bonus.idx]?.toLowerCase();
+  if (!state.word) return null;
+  const norm = normalize(state.word);
+  return norm[state.wordIdx]?.toLowerCase();
+}
+
+function randomDecoyLetter(avoid) {
+  let c;
+  do { c = ALPHA[Math.floor(Math.random() * 26)].toLowerCase(); }
+  while (c === avoid);
+  return c;
+}
+
+function randomDecoyDigit(avoid) {
+  let d;
+  do { d = Math.floor(Math.random() * 10); } while (d === avoid);
+  return String(d);
+}
+
+function pickRainKey() {
+  const needLetter = !!(state.word || state.bonus);
+  const needDigit = !!state.eq;
+  const correctLetter = needLetter ? nextLetterKey() : null;
+  const correctDigit = needDigit ? String(state.eqAnswer) : null;
+
+  const slot = rainCycle++ % 4;
+  if (slot === 0 && correctLetter) return correctLetter;
+  if (slot === 1 && correctDigit) return correctDigit;
+  if (slot === 2 && needLetter) return randomDecoyLetter(correctLetter);
+  if (slot === 3 && needDigit) return randomDecoyDigit(state.eqAnswer);
+  // fallbacks
+  if (correctLetter) return correctLetter;
+  if (correctDigit) return correctDigit;
+  if (needLetter) return randomDecoyLetter(null);
+  if (needDigit) return randomDecoyDigit(-1);
+  return null;
+}
+
+function spawnRainBubble() {
+  if (!rainActive()) return;
+  if (rainContainer.childElementCount >= rainCap()) return;
+  const key = pickRainKey();
+  if (!key) return;
+
+  const b = document.createElement('button');
+  b.type = 'button';
+  const colorIdx = Math.floor(Math.random() * 7);
+  b.className = 'rain-bubble c' + colorIdx;
+  b.textContent = key.toUpperCase();
+
+  const xvw = 4 + Math.random() * 88;
+  const sx1 = (Math.random() * 80 - 40);
+  const sx2 = (Math.random() * 80 - 40);
+  const dur = 11 + Math.random() * 5;
+  b.style.setProperty('--x', xvw + 'vw');
+  b.style.setProperty('--sx1', sx1 + 'px');
+  b.style.setProperty('--sx2', sx2 + 'px');
+  b.style.setProperty('--dur', dur + 's');
+
+  // Pop on first pointer crossing — mouse hover, touch drag-through, and
+  // Magic Remote cursor sweep all use the same gesture. 250ms settling
+  // window so a bubble spawning under a stationary cursor doesn't insta-pop.
+  b.dataset.bornAt = String(Date.now());
+  b.dataset.key = key;
+  // On touch, the browser captures the pointer to the initial target which
+  // prevents pointerenter on subsequent bubbles during a swipe. Release it.
+  b.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') {
+      try { b.releasePointerCapture(e.pointerId); } catch {}
+    }
+  });
+  b.addEventListener('pointerenter', () => {
+    if (Date.now() - Number(b.dataset.bornAt) < 250) return;
+    onRainTap(b, key);
+  });
+  // Click stays as a fallback for any pointer input that bypasses enter.
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onRainTap(b, key);
+  });
+  b.addEventListener('animationend', () => b.remove());
+  rainContainer.appendChild(b);
+}
+
+// Global swipe-through pop: even if pointer capture holds the touch to the
+// initial element, pointermove still fires on the window. elementFromPoint
+// finds whichever bubble is currently under the finger.
+window.addEventListener('pointermove', (e) => {
+  if (parentGate.open || settingsDialog.open) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if (!el || !el.classList || !el.classList.contains('rain-bubble')) return;
+  if (el.classList.contains('pop')) return;
+  if (Date.now() - Number(el.dataset.bornAt || 0) < 250) return;
+  onRainTap(el, el.dataset.key);
+});
+
+function onRainTap(bubble, key) {
+  if (bubble.classList.contains('pop')) return;
+  // Freeze the bubble at its current rendered position so the pop animation
+  // doesn't jump back to the rain-fall starting transform.
+  const rect = bubble.getBoundingClientRect();
+  const parentRect = rainContainer.getBoundingClientRect();
+  // Hand the spawn its origin in viewport-% so the letter pops up at the bubble.
+  spawnOriginOverride = {
+    x: ((rect.left + rect.width / 2) / window.innerWidth) * 100,
+    y: ((rect.top + rect.height / 2) / window.innerHeight) * 100,
+  };
+  bubble.style.animation = 'none';
+  bubble.style.transform = 'none';
+  bubble.style.left = (rect.left - parentRect.left) + 'px';
+  bubble.style.top = (rect.top - parentRect.top) + 'px';
+  void bubble.offsetWidth; // force reflow before swapping to pop animation
+  bubble.classList.add('pop');
+  setTimeout(() => bubble.remove(), 500);
+  window.dispatchEvent(new KeyboardEvent('keydown', { key }));
+}
+
+function rainTick() {
+  if (!rainActive()) return;
+  spawnRainBubble();
+}
+
+function startRain() {
+  if (rainTimer) return;
+  rainTimer = setInterval(rainTick, RAIN_INTERVAL_MS);
+  // immediate first spawn so the user sees something quickly
+  setTimeout(rainTick, 400);
+}
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
 
@@ -1256,6 +1539,7 @@ setCount(state.keyCount);
 newWord();
 newEquation();
 updateLevelLabels();
+startRain();
 
 // Try to prime audio on first user interaction
 window.addEventListener('pointerdown', () => audio(), { once: true });
@@ -1265,6 +1549,6 @@ window.addEventListener('keydown', () => audio(), { once: true });
 const isLocalDev = location.hostname === 'localhost'
   || location.hostname === '127.0.0.1'
   || location.protocol === 'file:';
-if ('serviceWorker' in navigator && !isLocalDev) {
+if ('serviceWorker' in navigator && !isLocalDev && !settings.reduceEffects) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

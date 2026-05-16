@@ -1,6 +1,6 @@
 {
-  "name": "Child Keyboard",
-  "short_name": "ChildKb",
+  "name": "FunKeyboard",
+  "short_name": "FunKeyboard",
   "description": "Safe keyboard playground for kids from baby to ~10yo. Press keys, see animals, learn letters, words and math.",
   "start_url": "./index.html",
   "scope": "./",

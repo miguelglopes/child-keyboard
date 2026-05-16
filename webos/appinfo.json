@@ -1,0 +1,14 @@
+{
+  "id": "com.mgl.funkeyboard",
+  "version": "1.0.0",
+  "vendor": "Miguel Gomes Lopes",
+  "type": "web",
+  "main": "index.html",
+  "title": "FunKeyboard",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#1a1230",
+  "bgColor": "#1a1230",
+  "uiRevision": "2",
+  "disableBackHistoryAPI": true
+}
