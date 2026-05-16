@@ -108,9 +108,7 @@ const PHRASES = {
     reduce_effects: 'Reduce effects',
     word_difficulty: 'Word difficulty', math_difficulty: 'Math difficulty',
     fullscreen: 'Fullscreen', reset_counter: 'Reset counter', close: 'Close',
-    parent_check: 'Parent check', parent_prompt: 'Press this key to continue',
-    cancel: 'Cancel',
-    exit_hint: 'To exit: hold top-left corner 3s + press the prompted key.',
+    exit_hint: 'To open settings: hold the top-left corner for 3 seconds.',
     auto: 'Auto',
     level_up: 'Level up!',
     voice_pick: 'Voice', test_voice: 'Test voice',
@@ -130,9 +128,7 @@ const PHRASES = {
     reduce_effects: 'Reduzir efeitos',
     word_difficulty: 'Dificuldade palavras', math_difficulty: 'Dificuldade matemática',
     fullscreen: 'Ecrã inteiro', reset_counter: 'Reiniciar contador', close: 'Fechar',
-    parent_check: 'Verificação adulto', parent_prompt: 'Carrega nesta tecla para continuar',
-    cancel: 'Cancelar',
-    exit_hint: 'Para sair: segura o canto superior esquerdo 3s + carrega na tecla pedida.',
+    exit_hint: 'Para abrir as definições: segura o canto superior esquerdo 3 segundos.',
     auto: 'Auto',
     level_up: 'Subiste de nível!',
     voice_pick: 'Voz', test_voice: 'Testar voz',
@@ -203,9 +199,7 @@ const mathBody = document.getElementById('math-body');
 const counterEl = document.getElementById('counter');
 const confettiEl = document.getElementById('confetti');
 const parentCorner = document.getElementById('parent-corner');
-const parentGate = document.getElementById('parent-gate');
 const settingsDialog = document.getElementById('settings');
-const parentPromptKey = document.getElementById('parent-prompt-key');
 
 // ─── I18N ───────────────────────────────────────────────────────────────────
 
@@ -481,6 +475,34 @@ function record(kind) {
   saveStats();
 }
 
+// ─── PACE ───────────────────────────────────────────────────────────────────
+// Exponentially-decayed completion rate. Each win adds 1 to `paceScore`; the
+// score decays continuously with time constant PACE_TAU. Displayed rate is
+// score/τ × 60 (challenges/min). Recent wins dominate; idle time fades the
+// meter. No storage — resets on reload. Adults can race themselves; kids see
+// a neutral number that goes up and gently down.
+
+const PACE_TAU = 90; // seconds
+const paceEl = document.getElementById('pace');
+let paceScore = 0;
+let paceLastT = performance.now();
+
+function paceDecayedScore(now) {
+  return paceScore * Math.exp(-((now - paceLastT) / 1000) / PACE_TAU);
+}
+function paceBump() {
+  const now = performance.now();
+  paceScore = paceDecayedScore(now) + 1;
+  paceLastT = now;
+  renderPace();
+}
+function renderPace() {
+  if (!paceEl) return;
+  const rate = paceDecayedScore(performance.now()) / PACE_TAU * 60;
+  paceEl.textContent = rate < 0.5 ? '' : `${Math.round(rate)}/min`;
+}
+setInterval(renderPace, 500);
+
 // ─── SPAWN ──────────────────────────────────────────────────────────────────
 
 let spawnSeed = 0;
@@ -646,6 +668,7 @@ function tryWordLetter(letter) {
       fanfare();
       say(state.wordDisplay || state.word);
       record('Words');
+      paceBump();
       if (state.wordEmoji) renderWord();
       maybeLevelUpWord();
       // ~35% chance to trigger a bonus picture quest after a win
@@ -734,6 +757,7 @@ function tryBonusLetter(letter) {
       fanfare();
       say(state.bonus.display);
       record('Bonus');
+      paceBump();
       renderBonus();
       if (state.bonusTimer) { clearTimeout(state.bonusTimer); state.bonusTimer = null; }
       setTimeout(closeBonus, 1800);
@@ -817,6 +841,7 @@ function tryEquationAnswer(digit) {
     fanfare();
     say(String(state.eqAnswer));
     record('Math');
+    paceBump();
     const firstTry = state.eqAttempts === 0;
     state.eq = null;
     mathBody.innerHTML = '';
@@ -873,7 +898,7 @@ function updateLevelLabels() {
 // ─── INPUT ──────────────────────────────────────────────────────────────────
 
 function handleKey(rawKey) {
-  if (parentGate.open || settingsDialog.open) return;
+  if (settingsDialog.open) return;
 
   setCount(state.keyCount + 1);
   record('Keys');
@@ -950,8 +975,8 @@ window.addEventListener('keydown', e => {
   if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 's') return;
   // Leave native browser keys alone
   if (e.key === 'F11' || e.key === 'F12') return;
-  // Don't fire while in a dialog (parent gate / settings handle their own keys)
-  if (parentGate.open || settingsDialog.open) {
+  // Don't fire while in the settings dialog — it handles its own keys.
+  if (settingsDialog.open) {
     if (e.key === 'Escape') return; // let dialog close natively
     return;
   }
@@ -965,7 +990,7 @@ const TRAIL_COLORS = ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93', '#f
 let lastTrailAt = 0;
 window.addEventListener('pointermove', (e) => {
   if (settings.reduceEffects) return;
-  if (parentGate.open || settingsDialog.open) return;
+  if (settingsDialog.open) return;
   const now = performance.now();
   if (now - lastTrailAt < 25) return;
   lastTrailAt = now;
@@ -990,13 +1015,14 @@ window.addEventListener('pointerdown', (e) => {
 });
 
 // ─── PARENT GATE ────────────────────────────────────────────────────────────
+// 3-second hold of the top-left corner opens settings. That's the whole gate —
+// a kid mashing keys won't trigger a 3-second deliberate hold by accident.
 
 let holdTimer = null;
-let promptedKey = null;
 
 function startHold() {
   parentCorner.classList.add('holding');
-  holdTimer = setTimeout(openParentGate, 3000);
+  holdTimer = setTimeout(() => { cancelHold(); openSettings(); }, 3000);
 }
 function cancelHold() {
   parentCorner.classList.remove('holding');
@@ -1007,41 +1033,6 @@ parentCorner.addEventListener('pointerdown', startHold);
 parentCorner.addEventListener('pointerup', cancelHold);
 parentCorner.addEventListener('pointerleave', cancelHold);
 parentCorner.addEventListener('pointercancel', cancelHold);
-
-function openParentGate() {
-  cancelHold();
-  promptedKey = String(randInt(1, 9));
-  parentPromptKey.textContent = promptedKey;
-  parentGate.showModal();
-
-  const unlock = () => {
-    window.removeEventListener('keydown', keyHandler, true);
-    parentGate.close();
-    openSettings();
-  };
-  const keyHandler = (e) => {
-    if (e.key === promptedKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      unlock();
-    } else if (e.key === 'Escape') {
-      window.removeEventListener('keydown', keyHandler, true);
-    }
-  };
-  const padHandler = (e) => {
-    const btn = e.target.closest('button[data-digit]');
-    if (!btn) return;
-    e.preventDefault();
-    if (btn.dataset.digit === promptedKey) unlock();
-  };
-  const keypad = document.getElementById('parent-keypad');
-  window.addEventListener('keydown', keyHandler, true);
-  keypad.addEventListener('click', padHandler);
-  parentGate.addEventListener('close', () => {
-    window.removeEventListener('keydown', keyHandler, true);
-    keypad.removeEventListener('click', padHandler);
-  }, { once: true });
-}
 
 // ─── SETTINGS ───────────────────────────────────────────────────────────────
 
@@ -1397,7 +1388,7 @@ const rainContainer = document.getElementById('rain');
 function rainActive() {
   if (!settings.fallingLetters) return false;
   if (!settings.quests) return false;
-  if (parentGate.open || settingsDialog.open) return false;
+  if (settingsDialog.open) return false;
   return !!(state.word || state.eq || state.bonus);
 }
 
@@ -1490,7 +1481,7 @@ function spawnRainBubble() {
 // initial element, pointermove still fires on the window. elementFromPoint
 // finds whichever bubble is currently under the finger.
 window.addEventListener('pointermove', (e) => {
-  if (parentGate.open || settingsDialog.open) return;
+  if (settingsDialog.open) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
   if (!el || !el.classList || !el.classList.contains('rain-bubble')) return;
   if (el.classList.contains('pop')) return;

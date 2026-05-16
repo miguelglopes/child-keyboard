@@ -14,7 +14,7 @@ Inspired by [tinyfingers.net](https://tinyfingers.net/), with more depth so it g
 
 ## Parent gate
 
-Hold the **top-left corner for 3 seconds**, then **press the prompted number key** to open settings. (Or: `Ctrl+Alt+S` shortcut.)
+Hold the **top-left corner for 3 seconds** to open settings. (Or: `Ctrl+Alt+S` shortcut.)
 
 Settings:
 - Language: English / Português
@@ -56,7 +56,7 @@ On the first key or tap, the app enters fullscreen and calls the [Keyboard Lock 
 
 **Ways out** (for the parent):
 - **Hold Esc for 1.5 seconds** — exits cleanly and stays out (won't re-enter on the next keypress).
-- **Parent gate** — hold the top-left corner for 3 seconds, press the prompted number, then toggle the Fullscreen button in settings.
+- **Parent gate** — hold the top-left corner for 3 seconds, then toggle the Fullscreen button in settings.
 
 **What it doesn't block:**
 - Firefox / Safari — no Keyboard Lock support. The app still enters fullscreen and re-enters on the next user gesture if the kid manages to escape, but keys aren't captured. Use OS-level lock-down here.
