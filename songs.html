@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Songs preview</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    font: 15px/1.4 system-ui, -apple-system, sans-serif;
+    max-width: 760px;
+    margin: 24px auto;
+    padding: 0 16px 64px;
+    background: #fafafa;
+    color: #222;
+  }
+  h1 { margin: 0 0 8px; font-size: 22px; }
+  p.note { margin: 0 0 16px; color: #666; font-size: 13px; }
+  h2 {
+    margin: 24px 0 4px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #555;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    background: white;
+  }
+  .row:hover { background: #f7f7f7; }
+  .row.playing { background: #fff8d8; }
+  .row.playing .name { font-weight: 600; }
+  .name { font-size: 15px; }
+  .meta { color: #888; font-size: 12px; font-variant-numeric: tabular-nums; }
+  button {
+    appearance: none;
+    border: 1px solid #ccc;
+    background: white;
+    border-radius: 4px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font: inherit;
+    color: #222;
+    min-width: 72px;
+  }
+  button:hover { background: #eee; }
+  button:active { background: #ddd; }
+  .row.playing button { background: #ffe680; border-color: #d4a600; }
+  #status {
+    position: sticky;
+    bottom: 0;
+    margin: 16px -16px -32px;
+    padding: 12px 16px;
+    background: #222;
+    color: #fafafa;
+    font-size: 13px;
+  }
+  #status .nowPlaying { color: #ffd54f; }
+  .controls { margin: 8px 0 16px; }
+  .controls button { margin-right: 8px; }
+</style>
+</head>
+<body>
+<h1>Songs preview</h1>
+<p class="note">Pulls <code>SONGS</code> live from <code>app.js</code>. Click <em>Play</em> to hear a song with its declared BPM and note durations (one pass — no repeat).</p>
+<div class="controls">
+  <button id="stopAll">Stop</button>
+  <button id="reload">Reload from app.js</button>
+</div>
+<div id="lists"></div>
+<div id="status">Loading…</div>
+
+<script>
+(async function () {
+  const statusEl = document.getElementById('status');
+  const listsEl = document.getElementById('lists');
+  const stopAllBtn = document.getElementById('stopAll');
+  const reloadBtn = document.getElementById('reload');
+
+  let ctx = null;
+  let stopFlag = false;
+  let activeRow = null;
+
+  function setStatus(html) { statusEl.innerHTML = html; }
+
+  async function loadSongs() {
+    setStatus('Fetching app.js…');
+    const code = await fetch('app.js?ts=' + Date.now()).then(r => r.text());
+    const pitchMatch = code.match(/const C3=[\s\S]*?B5=[\d.]+;/);
+    const songsMatch = code.match(/const SONGS = (\[[\s\S]*?\n\]);/);
+    if (!pitchMatch || !songsMatch) throw new Error('Could not locate SONGS in app.js');
+    const songs = (new Function('"use strict";' + pitchMatch[0] + '\nreturn ' + songsMatch[1]))();
+    return songs;
+  }
+
+  function stopAll() {
+    stopFlag = true;
+    if (ctx) {
+      try { ctx.close(); } catch (_) {}
+      ctx = null;
+    }
+    if (activeRow) {
+      activeRow.classList.remove('playing');
+      activeRow.querySelector('button').textContent = 'Play';
+      activeRow = null;
+    }
+    setStatus('Stopped.');
+  }
+
+  function playSong(song, row) {
+    stopAll();
+    stopFlag = false;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    activeRow = row;
+    row.classList.add('playing');
+    row.querySelector('button').textContent = 'Stop';
+
+    const bpm = song.bpm || 120;
+    const spq = 60 / bpm;
+
+    const master = ctx.createGain();
+    master.gain.value = 0.18;
+    master.connect(ctx.destination);
+
+    let t = ctx.currentTime + 0.05;
+    let totalSec = 0;
+    for (const [freq, dur] of song.notes) {
+      const noteSec = dur * spq;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      osc.connect(gain).connect(master);
+      const a = 0.005;
+      const r = Math.min(0.05, noteSec * 0.4);
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(1, t + a);
+      gain.gain.setValueAtTime(1, t + noteSec - r);
+      gain.gain.linearRampToValueAtTime(0, t + noteSec);
+      osc.start(t);
+      osc.stop(t + noteSec + 0.02);
+      t += noteSec;
+      totalSec += noteSec;
+    }
+
+    setStatus(`<span class="nowPlaying">▶ ${song.name}</span> · ${song.bpm} bpm · ${song.notes.length} notes · ${totalSec.toFixed(1)}s`);
+
+    setTimeout(() => {
+      if (!stopFlag && activeRow === row) {
+        row.classList.remove('playing');
+        row.querySelector('button').textContent = 'Play';
+        activeRow = null;
+        if (ctx) { try { ctx.close(); } catch (_) {} ctx = null; }
+        setStatus(`Finished: ${song.name}`);
+      }
+    }, totalSec * 1000 + 200);
+  }
+
+  function isPT(s) { return /\(PT\)\s*$/.test(s.name); }
+
+  function renderSection(title, songs) {
+    const h = document.createElement('h2');
+    h.textContent = `${title} (${songs.length})`;
+    listsEl.appendChild(h);
+    for (const s of songs) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = s.name;
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      const totalBeats = s.notes.reduce((a, [, d]) => a + d, 0);
+      const totalSec = totalBeats * 60 / (s.bpm || 120);
+      meta.textContent = `${s.bpm} bpm · ${s.notes.length} notes · ${totalSec.toFixed(1)}s`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Play';
+      btn.onclick = () => {
+        if (activeRow === row) stopAll();
+        else playSong(s, row);
+      };
+      row.append(name, meta, btn);
+      listsEl.appendChild(row);
+    }
+  }
+
+  async function render() {
+    stopAll();
+    listsEl.innerHTML = '';
+    try {
+      const songs = await loadSongs();
+      const pt = songs.filter(isPT);
+      const en = songs.filter(s => !isPT(s));
+      renderSection('Portuguese (PT-PT)', pt);
+      renderSection('English / classic', en);
+      setStatus(`${songs.length} songs loaded.`);
+    } catch (e) {
+      setStatus(`Error: ${e.message}`);
+    }
+  }
+
+  stopAllBtn.onclick = stopAll;
+  reloadBtn.onclick = render;
+  await render();
+})();
+</script>
+</body>
+</html>

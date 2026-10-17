@@ -4,6 +4,11 @@
 // kiosk/keyboard-lock code is skipped there (see KIOSK section below).
 
 const isWebOS = !!window.PalmSystem || /web0s|webos/i.test(navigator.userAgent);
+const isTouchCapable = 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
+// Rain bubbles are only useful where the kid can swipe through them — touch
+// screens and TVs (Magic Remote cursor). On a desktop browser they're just
+// noise during keyboard play, so suppress them there.
+const rainAllowed = isTouchCapable || isWebOS;
 
 // ─── UTILS ──────────────────────────────────────────────────────────────────
 
@@ -107,7 +112,7 @@ const PHRASES = {
     falling_letters: 'Falling letters', reduce_motion: 'Reduce motion',
     reduce_effects: 'Reduce effects',
     word_difficulty: 'Word difficulty', math_difficulty: 'Math difficulty',
-    fullscreen: 'Fullscreen', reset_counter: 'Reset counter', close: 'Close',
+    fullscreen: 'Fullscreen', reset_counter: 'Reset counter', reset_levels: 'Reset levels', close: 'Close',
     exit_hint: 'To open settings: hold the top-left corner for 3 seconds.',
     auto: 'Auto',
     level_up: 'Level up!',
@@ -127,7 +132,7 @@ const PHRASES = {
     falling_letters: 'Letras que caem', reduce_motion: 'Reduzir movimento',
     reduce_effects: 'Reduzir efeitos',
     word_difficulty: 'Dificuldade palavras', math_difficulty: 'Dificuldade matemática',
-    fullscreen: 'Ecrã inteiro', reset_counter: 'Reiniciar contador', close: 'Fechar',
+    fullscreen: 'Ecrã inteiro', reset_counter: 'Reiniciar contador', reset_levels: 'Reiniciar níveis', close: 'Fechar',
     exit_hint: 'Para abrir as definições: segura o canto superior esquerdo 3 segundos.',
     auto: 'Auto',
     level_up: 'Subiste de nível!',
@@ -238,7 +243,59 @@ function beep(freq, dur = 0.18, type = 'triangle', gain = 0.18) {
   osc.start();
   osc.stop(ctx.currentTime + dur);
 }
-const PENTATONIC = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25];
+// C-major DIATONIC: 7 notes (C D E F G A B) per octave. Extended from the
+// original pentatonic so we can play traditional PT-PT folk songs that lean
+// on F and B (Sol-Fá-Mi descents and Si-Lá-Sol cadences). Trade-off: random
+// keypresses can now produce semitones (E-F, B-C) — Western-music normal but
+// loses the "any two keys sound good together" pentatonic guarantee. Layout:
+//   Bottom row : Z X C V B N M , . /  →  C3..E4    (1.5 octaves)
+//   ASDF row   : A S D F G H J K L ;  →  F4..A5    (1.5 octaves)
+//   QWERTY row : Q W E R T Y U I O P  →  B5..D7    (1.5 octaves)
+//   Digits row : 1 2 3 4 5 6 7 8 9 0  →  C5..E6    (overlaps ASDF — kids' alt row)
+const KEY_TO_FREQ = {
+  'Z': 130.81, 'X': 146.83, 'C': 164.81, 'V': 174.61, 'B': 196.00,
+  'N': 220.00, 'M': 246.94, ',': 261.63, '.': 293.66, '/': 329.63,
+  'A': 349.23, 'S': 392.00, 'D': 440.00, 'F': 493.88, 'G': 523.25,
+  'H': 587.33, 'J': 659.25, 'K': 698.46, 'L': 783.99, ';': 880.00,
+  'Q': 987.77, 'W': 1046.50, 'E': 1174.66, 'R': 1318.51, 'T': 1396.91,
+  'Y': 1567.98, 'U': 1760.00, 'I': 1975.53, 'O': 2093.00, 'P': 2349.32,
+  '1': 523.25, '2': 587.33, '3': 659.25, '4': 698.46, '5': 783.99,
+  '6': 880.00, '7': 987.77, '8': 1046.50, '9': 1174.66, '0': 1318.51,
+};
+const ALL_DIATONIC_FREQS = Object.values(KEY_TO_FREQ);
+
+// Reverse index: each frequency → letters/digits that play it. Used by the
+// rain spawner to pick a bubble whose letter pitch matches the song's note.
+// Punctuation keys excluded — bubbles only show alphanumerics.
+const FREQ_TO_KEYS = (() => {
+  const map = new Map();
+  for (const [key, freq] of Object.entries(KEY_TO_FREQ)) {
+    if (!/[A-Z0-9]/.test(key)) continue;
+    if (!map.has(freq)) map.set(freq, []);
+    map.get(freq).push(key);
+  }
+  return map;
+})();
+
+// C-major diatonic scale positions (semitones from C). scaleIdx returns
+// 0..6 for an in-scale freq (C=0, D=1, E=2, F=3, G=4, A=5, B=6), else -1.
+const SCALE_CLASS_SEMIS = [0, 2, 4, 5, 7, 9, 11];
+function scaleIdx(freq) {
+  if (!freq) return -1;
+  const semis = Math.round(12 * Math.log2(freq / 261.63));
+  const cls = ((semis % 12) + 12) % 12;
+  return SCALE_CLASS_SEMIS.indexOf(cls);
+}
+// Scale-step distance mod octave: 0 = same pitch class (any octave),
+// 1 = adjacent step (whole or half), ≥2 = farther. Used to decide whether
+// the quest letter's fixed pitch is close enough to the song's next note to
+// be injected without breaking the melody.
+function scaleDist(freqA, freqB) {
+  const a = scaleIdx(freqA), b = scaleIdx(freqB);
+  if (a < 0 || b < 0) return Infinity;
+  const d = Math.abs(a - b);
+  return Math.min(d, 7 - d);
+}
 
 function sweep(fromHz, toHz, dur, type = 'sawtooth', gain = 0.14) {
   if (!settings.sound) return;
@@ -271,79 +328,115 @@ function noise(dur = 0.08, gain = 0.15) {
   src.start();
 }
 
-// Theme-specific letter/digit voicings
-function letterTone(letter) {
-  const idx = letter.charCodeAt(0) - 65;
-  const theme = effectiveTheme();
-  if (theme === 'space')   return spaceZap(idx);
-  if (theme === 'ocean')   return bubblePop(idx);
-  if (theme === 'jungle')  return jungleDrum(idx);
-  if (theme === 'baby')    return babyDing(idx);
-  return rainbowBell(idx);
+// Per-theme instruments: each takes a frequency (Hz) and plays a single note.
+// reduceEffects skips secondary partials/decorations so webOS TVs stay smooth.
+function bellSynth(freq) {
+  beep(freq, 0.55, 'sine', 0.16);
+  beep(freq * 2, 0.45, 'triangle', 0.05);
+  if (!settings.reduceEffects) {
+    setTimeout(() => beep(freq * 2.76, 0.4, 'sine', 0.03), 6);
+  }
 }
 
-function digitTone(digit) {
-  const theme = effectiveTheme();
-  if (theme === 'space')   return spaceZap(digit + 13);
-  if (theme === 'ocean')   return bubblePop(digit + 6);
-  if (theme === 'jungle')  return jungleDrum(digit);
-  if (theme === 'baby')    return babyDing(digit + 13);
-  // rainbow default
-  beep(220 + digit * 30, 0.15, 'sine', 0.16);
+function musicBoxSynth(freq) {
+  beep(freq, 0.45, 'triangle', 0.10);
+  beep(freq * 2, 0.4, 'sine', 0.05);
+  if (!settings.reduceEffects) {
+    setTimeout(() => beep(freq * 4, 0.18, 'sine', 0.02), 25);
+  }
 }
 
-function babyDing(idx) {
-  // Two-note soft sine: low gain, narrow pitch range, long-ish decay.
-  // Calmer than rainbow bells and quieter than zaps/drums.
-  const BASE = [261.63, 329.63, 392.00, 440.00, 523.25];
-  const note = BASE[idx % BASE.length];
-  beep(note, 0.32, 'sine', 0.08);
+function padSynth(freq) {
+  if (!settings.sound) return;
+  const ctx = audio();
+  const t = ctx.currentTime;
+  const ratio = Math.pow(2, 6 / 1200); // ±6 cents detune for chorus
+  for (const f of [freq / ratio, freq * ratio]) {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = f;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.05, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.9);
+  }
 }
 
-function rainbowBell(idx) {
-  const note = PENTATONIC[idx % PENTATONIC.length] * (idx >= PENTATONIC.length ? 2 : 1);
-  beep(note, 0.18, 'triangle', 0.18);
-  // Harmonic chime
-  setTimeout(() => beep(note * 2, 0.12, 'sine', 0.08), 30);
+function marimbaSynth(freq) {
+  beep(freq, 0.25, 'sine', 0.16);
+  if (!settings.reduceEffects) {
+    beep(freq * 4, 0.13, 'sine', 0.05);
+    noise(0.005, 0.04);
+  }
 }
 
-function spaceZap(idx) {
-  const base = 600 + (idx % 8) * 80;
-  sweep(base * 2, base * 0.8, 0.14, 'sawtooth', 0.13);
-  setTimeout(() => sweep(base * 3, base * 1.2, 0.08, 'square', 0.07), 35);
+function chipSynth(freq) {
+  if (!settings.sound) return;
+  const ctx = audio();
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.10, t + 0.005);
+  g.gain.setValueAtTime(0.10, t + 0.065);
+  g.gain.linearRampToValueAtTime(0.05, t + 0.075);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+  osc.connect(g).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.3);
+  if (!settings.reduceEffects) {
+    setTimeout(() => beep(freq * 2, 0.08, 'square', 0.05), 80);
+  }
 }
 
-function bubblePop(idx) {
-  const base = 220 + (idx % 8) * 35;
-  sweep(base * 0.7, base * 1.6, 0.09, 'sine', 0.18);
-  setTimeout(() => beep(base * 2.2, 0.04, 'sine', 0.1), 50);
+const THEME_INSTRUMENTS = {
+  rainbow: bellSynth,
+  baby:    musicBoxSynth,
+  ocean:   padSynth,
+  jungle:  marimbaSynth,
+  space:   chipSynth,
+};
+
+function themeSynth() {
+  return THEME_INSTRUMENTS[effectiveTheme()] || bellSynth;
 }
 
-function jungleDrum(idx) {
-  const base = 70 + (idx % 6) * 28;
-  sweep(base * 4, base, 0.07, 'square', 0.22);
-  noise(0.05, 0.08);
-  if (idx % 4 === 0) setTimeout(() => beep(base * 8, 0.04, 'triangle', 0.06), 40);
+function playNote(key) {
+  const freq = KEY_TO_FREQ[key.toUpperCase()]
+    ?? ALL_DIATONIC_FREQS[Math.floor(Math.random() * ALL_DIATONIC_FREQS.length)];
+  themeSynth()(freq);
 }
+
+// Two-note pentatonic flick — used for routine quest completions. Sits inside
+// the rain melody instead of steamrolling it. Voiced in the active theme's
+// instrument so the timbre blends with everything else.
+function questDing() {
+  if (!settings.sound) return;
+  const synth = themeSynth();
+  synth(783.99);                          // G5
+  setTimeout(() => synth(1046.50), 90);   // C6
+}
+
+// Theme-aware level-up motif. All notes are C-major pentatonic so the fanfare
+// stays in-key with whichever song the rain is currently playing. Each theme
+// gets a distinct phrase shape so the moment *feels* like its world.
+const FANFARE_MOTIFS = {
+  rainbow: { notes: [523.25, 659.25, 783.99, 1046.50, 1318.51, 1046.50], step: 90 },
+  baby:    { notes: [523.25, 783.99, 1046.50, 1318.51, 1046.50, 1318.51], step: 110 },
+  ocean:   { notes: [392.00, 523.25, 659.25, 783.99, 1046.50],            step: 180 },
+  jungle:  { notes: [392.00, 523.25, 392.00, 659.25, 523.25, 783.99, 1046.50], step: 80 },
+  space:   { notes: [523.25, 783.99, 1046.50, 1318.51, 1567.98, 2093.00], step: 70 },
+};
 function fanfare() {
   if (!settings.sound) return;
-  // Quick ascending arpeggio
-  const arp = [392.00, 523.25, 659.25, 783.99, 1046.50, 1318.51];
-  arp.forEach((n, i) => setTimeout(() => beep(n, 0.16, 'triangle', 0.18), i * 60));
-  // Big sustained chord
-  const chordStart = arp.length * 60;
-  setTimeout(() => {
-    beep(523.25, 0.7, 'sine', 0.14);  // C5
-    beep(659.25, 0.7, 'sine', 0.14);  // E5
-    beep(783.99, 0.7, 'sine', 0.14);  // G5
-    beep(1046.50, 0.7, 'sine', 0.14); // C6
-  }, chordStart);
-  // High shimmer
-  for (let i = 0; i < 3; i++) {
-    setTimeout(() => beep(1568.00 + i * 100, 0.12, 'triangle', 0.1), chordStart + 200 + i * 80);
-  }
-  // Trumpet-like blast at the end
-  setTimeout(() => beep(880, 0.4, 'square', 0.18), chordStart + 500);
+  const synth = themeSynth();
+  const { notes, step } = FANFARE_MOTIFS[effectiveTheme()] || FANFARE_MOTIFS.rainbow;
+  notes.forEach((f, i) => setTimeout(() => synth(f), i * step));
 }
 function sadBoop() {
   beep(180, 0.25, 'sawtooth', 0.08);
@@ -387,8 +480,9 @@ function pickVoice() {
       || null;
 }
 
-function say(text) {
-  if (!settings.voice || !window.speechSynthesis) return;
+function say(text, { force = false } = {}) {
+  if (!window.speechSynthesis) return;
+  if (!force && !settings.voice) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   const v = pickVoice();
@@ -591,6 +685,7 @@ function renderWord() {
   if (!state.word) return;
   const lv = effectiveWordLevel();
   wordBody.innerHTML = '';
+  wordBody.classList.remove('one-line');
   const norm = normalize(state.word);
 
   // Lv 0 — pre-keyboard: big emoji + cards for each letter of the word in order
@@ -617,6 +712,8 @@ function renderWord() {
     wordBody.appendChild(cardsWrap);
     return;
   }
+
+  wordBody.classList.add('one-line');
 
   // Lv 1+ — always include the emoji for visual association
   if (state.wordEmoji) {
@@ -655,6 +752,27 @@ function renderWord() {
 
     wordBody.appendChild(span);
   }
+  fitQuest(document.getElementById('word-quest'), wordBody);
+}
+
+// Scale .quest down when the rendered body would overflow horizontally, so
+// long Portuguese words like TARTARUGA stay on a single line. Multi-line
+// wrapping has been disabled in CSS via .quest-body.one-line.
+function fitQuest(questEl, bodyEl) {
+  if (!questEl || !bodyEl) return;
+  questEl.style.fontSize = '';
+  requestAnimationFrame(() => {
+    const maxWidth = window.innerWidth * 0.94;
+    if (bodyEl.scrollWidth <= maxWidth) return;
+    const cur = parseFloat(getComputedStyle(questEl).fontSize);
+    let next = Math.max(16, Math.floor(cur * (maxWidth / bodyEl.scrollWidth)));
+    questEl.style.fontSize = next + 'px';
+    let safety = 12;
+    while (bodyEl.scrollWidth > maxWidth && next > 16 && safety-- > 0) {
+      next = Math.max(16, next - 2);
+      questEl.style.fontSize = next + 'px';
+    }
+  });
 }
 
 function tryWordLetter(letter) {
@@ -664,8 +782,7 @@ function tryWordLetter(letter) {
     state.wordIdx++;
     if (state.wordIdx >= state.word.length) {
       // Word completed
-      confetti();
-      fanfare();
+      questDing();
       say(state.wordDisplay || state.word);
       record('Words');
       paceBump();
@@ -676,7 +793,6 @@ function tryWordLetter(letter) {
       setTimeout(newWord, 1800);
     } else {
       renderWord();
-      beep(880, 0.08, 'sine', 0.1);
     }
     return true;
   }
@@ -753,8 +869,7 @@ function tryBonusLetter(letter) {
   if (letter === state.bonus.word[state.bonus.idx]) {
     state.bonus.idx++;
     if (state.bonus.idx >= state.bonus.word.length) {
-      confetti(150);
-      fanfare();
+      questDing();
       say(state.bonus.display);
       record('Bonus');
       paceBump();
@@ -763,7 +878,6 @@ function tryBonusLetter(letter) {
       setTimeout(closeBonus, 1800);
     } else {
       renderBonus();
-      beep(1320, 0.08, 'sine', 0.12);
     }
     return true;
   }
@@ -817,6 +931,7 @@ function renderEquation() {
   if (!state.eq) return;
   const { a, b, op } = state.eq;
   mathBody.innerHTML = '';
+  mathBody.classList.add('one-line');
   const opKey = op === '×' ? '*' : op === '÷' ? '/' : op;
   const parts = [
     { t: String(a), cls: 'q-char done',  key: String(a) },
@@ -832,13 +947,13 @@ function renderEquation() {
     if (p.key) makeTappable(s, p.key);
     mathBody.appendChild(s);
   }
+  fitQuest(document.getElementById('math-quest'), mathBody);
 }
 
 function tryEquationAnswer(digit) {
   if (state.eq == null) return false;
   if (parseInt(digit, 10) === state.eqAnswer) {
-    confetti();
-    fanfare();
+    questDing();
     say(String(state.eqAnswer));
     record('Math');
     paceBump();
@@ -870,10 +985,7 @@ function maybeLevelUpMath() {
 function levelUpCelebration(which) {
   record('LevelUps');
   confetti(120);
-  if (settings.sound) {
-    const notes = [523.25, 659.25, 783.99, 987.77, 1318.51];
-    notes.forEach((n, i) => setTimeout(() => beep(n, 0.4, 'square', 0.14), i * 100));
-  }
+  fanfare();
   say(PHRASES[settings.lang].level_up);
   const lvNum = (which === 'word' ? state.wordLevel : state.mathLevel) + 1;
   const el = document.createElement('div');
@@ -912,10 +1024,10 @@ function handleKey(rawKey) {
     if (data) {
       spawn(up, data[1]);
       say(`${up}. ${data[0]}`);
-      letterTone(norm);
+      playNote(norm);
     } else {
       spawn(up);
-      letterTone(norm);
+      playNote(norm);
     }
     const matchedQuest = tryWordLetter(norm);
     const matchedBonus = tryBonusLetter(norm);
@@ -927,28 +1039,33 @@ function handleKey(rawKey) {
   if (/^[0-9]$/.test(rawKey)) {
     spawn(rawKey, '🔢');
     say(rawKey);
-    digitTone(parseInt(rawKey, 10));
+    playNote(rawKey);
     tryEquationAnswer(rawKey);
     return;
   }
 
-  // Operators
+  // Operators — fixed pentatonic motif through current theme instrument
   if (rawKey === '+' || rawKey === '-' || rawKey === '*' || rawKey === '/') {
     spawn(rawKey === '*' ? '×' : rawKey === '/' ? '÷' : rawKey, '');
-    beep(660, 0.15, 'square', 0.12);
+    const opFreq = { '+': 523.25, '-': 587.33, '*': 783.99, '/': 880.00 };
+    themeSynth()(opFreq[rawKey]);
     return;
   }
 
-  if (rawKey === ' ' || rawKey === 'Spacebar' || rawKey === 'Enter') {
-    confetti(30);
-    fanfare();
+  if (rawKey === ' ' || rawKey === 'Spacebar') {
+    themeSynth()(130.81); // low C3 bass beat
+    return;
+  }
+  if (rawKey === 'Enter') {
+    const synth = themeSynth();
+    synth(523.25); synth(659.25); synth(783.99); // C-major triad
     return;
   }
 
-  // Single visible punctuation — show the char + random emoji
+  // Single visible punctuation — show the char + random emoji, play a pentatonic note
   if (rawKey.length === 1) {
     spawn(rawKey, randomFunEmoji());
-    beep(440 + Math.random() * 440, 0.12, 'triangle', 0.14);
+    playNote(rawKey);
     return;
   }
 
@@ -963,11 +1080,8 @@ function randomFunEmoji() {
 function randomDelight() {
   const e = randomFunEmoji();
   spawn(e, '');
-  const notes = [392, 440, 523, 587, 659, 784, 880, 1046, 1175, 1318];
-  const note = notes[Math.floor(Math.random() * notes.length)];
-  const type = Math.random() < 0.5 ? 'triangle' : 'sine';
-  beep(note, 0.16, type, 0.14);
-  if (Math.random() < 0.12) confetti(20);
+  const note = ALL_DIATONIC_FREQS[Math.floor(Math.random() * ALL_DIATONIC_FREQS.length)];
+  themeSynth()(note);
 }
 
 window.addEventListener('keydown', e => {
@@ -981,6 +1095,11 @@ window.addEventListener('keydown', e => {
     return;
   }
   e.preventDefault();
+  // Mirror a real keypress onto the falling rain: oldest matching bubble pops,
+  // and the spawn that follows lands at the bubble's position. Synthetic
+  // keydowns dispatched from onRainTap have isTrusted=false — skip them so
+  // popping one bubble doesn't chain-pop another.
+  if (e.isTrusted) popMatchingBubble(e.key);
   handleKey(e.key);
 });
 
@@ -1236,6 +1355,20 @@ function rebuildVoicePicker() {
   sel.value = currentKey || '';
 }
 
+function renderStatsTable() {
+  rollIfNewDay();
+  document.getElementById('st-today-keys').textContent = stats.todayKeys.toLocaleString();
+  document.getElementById('st-today-words').textContent = stats.todayWords.toLocaleString();
+  document.getElementById('st-today-math').textContent = stats.todayMath.toLocaleString();
+  document.getElementById('st-today-levelups').textContent = stats.todayLevelUps.toLocaleString();
+  document.getElementById('st-all-keys').textContent = stats.allTimeKeys.toLocaleString();
+  document.getElementById('st-all-words').textContent = stats.allTimeWords.toLocaleString();
+  document.getElementById('st-all-math').textContent = stats.allTimeMath.toLocaleString();
+  document.getElementById('st-all-levelups').textContent = stats.allTimeLevelUps.toLocaleString();
+  document.getElementById('st-today-bonus').textContent = stats.todayBonus.toLocaleString();
+  document.getElementById('st-all-bonus').textContent = stats.allTimeBonus.toLocaleString();
+}
+
 function openSettings() {
   document.getElementById('set-lang').value = settings.lang;
   document.getElementById('set-theme').value = settings.theme;
@@ -1249,18 +1382,7 @@ function openSettings() {
   document.getElementById('set-word-diff').value = settings.wordDiff;
   document.getElementById('set-math-diff').value = settings.mathDiff;
   rebuildVoicePicker();
-  // Populate stats numbers
-  rollIfNewDay();
-  document.getElementById('st-today-keys').textContent = stats.todayKeys.toLocaleString();
-  document.getElementById('st-today-words').textContent = stats.todayWords.toLocaleString();
-  document.getElementById('st-today-math').textContent = stats.todayMath.toLocaleString();
-  document.getElementById('st-today-levelups').textContent = stats.todayLevelUps.toLocaleString();
-  document.getElementById('st-all-keys').textContent = stats.allTimeKeys.toLocaleString();
-  document.getElementById('st-all-words').textContent = stats.allTimeWords.toLocaleString();
-  document.getElementById('st-all-math').textContent = stats.allTimeMath.toLocaleString();
-  document.getElementById('st-all-levelups').textContent = stats.allTimeLevelUps.toLocaleString();
-  document.getElementById('st-today-bonus').textContent = stats.todayBonus.toLocaleString();
-  document.getElementById('st-all-bonus').textContent = stats.allTimeBonus.toLocaleString();
+  renderStatsTable();
   settingsDialog.showModal();
 }
 
@@ -1303,11 +1425,32 @@ document.addEventListener('fullscreenchange', () => {
 
 document.getElementById('btn-test-voice').addEventListener('click', () => {
   const t = settings.lang === 'pt' ? 'Olá! Vamos brincar com letras.' : 'Hello! Let\'s play with letters.';
-  say(t);
+  say(t, { force: true });
 });
 
 document.getElementById('btn-reset').addEventListener('click', () => {
   setCount(0);
+  // Wipe stats too so the dialog actually shows the reset — otherwise the only
+  // visual change is the tiny counter behind the modal.
+  stats.date = todayStr();
+  stats.todayKeys = 0; stats.todayWords = 0; stats.todayMath = 0;
+  stats.todayLevelUps = 0; stats.todayBonus = 0;
+  stats.allTimeKeys = 0; stats.allTimeWords = 0; stats.allTimeMath = 0;
+  stats.allTimeLevelUps = 0; stats.allTimeBonus = 0;
+  saveStats();
+  renderStatsTable();
+});
+
+document.getElementById('btn-reset-levels').addEventListener('click', () => {
+  state.wordLevel = 0;
+  state.mathLevel = 0;
+  state.wordStreak = 0;
+  state.mathStreak = 0;
+  localStorage.setItem('ck-word-level', '0');
+  localStorage.setItem('ck-math-level', '0');
+  updateLevelLabels();
+  newWord();
+  newEquation();
 });
 
 // Hidden keyboard shortcut for adults to open settings (Ctrl+Alt+S)
@@ -1376,16 +1519,365 @@ if (!isWebOS) {
 }
 
 // ─── RAIN (falling letter/digit bubbles) ───────────────────────────────────
+//
+// Rain is song-driven: bubbles spawn on the beat of a melody, and each bubble's
+// letter is chosen so its keyboard pitch (KEY_TO_FREQ) matches the song's next
+// note — when the kid pops bubbles in order, the song plays. The quest's
+// "correct next letter/digit" is injected when its pitch fits (exact match or
+// one pentatonic step away), and force-injected every QUEST_INJECT_BUDGET
+// beats so quest progress never stalls.
 
-const RAIN_INTERVAL_MS = 1700;
+const BEAT_MS = 500; // quarter-note duration ≈ 120 BPM (lively kid-song range)
+const QUEST_INJECT_BUDGET = 8; // beats without inject before force-injecting
 const RAIN_MAX_ON_SCREEN = 9;
 const rainCap = () => settings.reduceEffects ? 5 : RAIN_MAX_ON_SCREEN;
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 let rainTimer = null;
-let rainCycle = 0;
+let letterInjectBudget = 0;
+let digitInjectBudget = 0;
 const rainContainer = document.getElementById('rain');
 
+// Songs are arrays of [freq, beats] where freq is a value present in
+// KEY_TO_FREQ — that way the bubble whose pitch equals the freq is always
+// available. Originals with F or B (non-pentatonic) are nudged to the
+// nearest pentatonic neighbour (F→E, B→A or C). Recognisable; never
+// dissonant against the rest of the keyboard.
+//
+// Many PT-PT entries are from memory and worth verifying by ear — if any
+// sounds wrong, fix the note array; the engine doesn't care which notes.
+const C3=130.81, D3=146.83, E3=164.81, F3=174.61, G3=196.00, A3=220.00, B3=246.94;
+const C4=261.63, D4=293.66, E4=329.63, F4=349.23, G4=392.00, A4=440.00, B4=493.88;
+const C5=523.25, D5=587.33, E5=659.25, F5=698.46, G5=783.99, A5=880.00, B5=987.77;
+
+// Each song carries its own bpm (quarter-note tempo) so the rain scheduler
+// uses each song's canonical pace instead of one fixed value. All melodies
+// here are transcribed from verified sources (sheet music / ABC notation /
+// text-based cifras). Keyboard is C-major diatonic so F and B are available
+// — most PT-PT folk songs lean on F and B and would be unrecognisable
+// without them, so the previous pentatonic-only filter has been lifted.
+const SONGS = [
+  // Source: abcnotation.com mirror + raw ABC file at U. Minho music corpus
+  // (https://natura.di.uminho.pt/~jj/musica/abc/infantil-cuco.abc). Full melody
+  // is A-A-B-A' structure — the B section is the contrasting refrain
+  // ("e o cuco não quis comer as couves"). All pure C-major pentatonic.
+  // Half-rest before B's pickup is dropped (scheduler doesn't model rests).
+  { name: 'Era Uma Vez um Cuco', bpm: 110, notes: [
+    // A — verse
+    [C4,0.5],[C4,0.5],[C4,0.5],[G3,0.5],
+    [C4,0.5],[D4,0.5],[E4,0.5],[E4,0.5],
+    [E4,0.5],[E4,0.5],[D4,0.5],[C4,0.5],
+    [D4,0.5],[E4,0.5],[C4,0.5],[C4,0.5],
+    // A — repeat
+    [C4,0.5],[C4,0.5],[C4,0.5],[G3,0.5],
+    [C4,0.5],[D4,0.5],[E4,0.5],[E4,0.5],
+    [E4,0.5],[E4,0.5],[D4,0.5],[C4,0.5],
+    [D4,0.5],[E4,0.5],[C4,0.5],[C4,0.5],
+    // B — refrain (pickup C, then snappy two-bar phrase repeated)
+    [C4,0.5],
+    [G4,0.25],[G4,0.25],[G4,0.5],[E4,0.5],[C4,0.5],
+    [G4,0.5],[G4,0.5],[E4,0.5],[C4,0.5],
+    [G4,0.25],[G4,0.25],[G4,0.5],[E4,0.5],[C4,0.5],
+    [G4,0.5],[G4,0.5],[E4,0.5],[C4,0.5],
+    // A' — closing tag with held cadence notes
+    [C4,0.5],[C4,0.5],[C4,0.5],[G3,0.5],
+    [C4,0.5],[D4,0.5],[E4,1],
+    [E4,0.5],[E4,0.5],[D4,0.5],[C4,0.5],
+    [D4,0.5],[E4,0.5],[C4,1],
+  ]},
+
+
+  // Source: https://imslp.org/wiki/A_Saia_de_Carolina_(Viro,_Angel) (Angel Viro
+  // wind-ensemble arr.; same melody as PT-PT vira). Track 2 (soprano flute).
+  // Auto-transposed +5 st; 158/174 = 90.8% diatonic, residual snapped.
+  // 5 distinct durations.
+  { name: 'A saia da Carolina (PT)', bpm: 85, notes: [
+    [F5,0.25],[G5,0.25],[G5,0.25],[F5,0.25],[G5,0.5],[D5,0.25],[D5,0.25],
+    [F5,0.5],[D5,0.25],[D5,0.25],[C5,1],
+    [G4,4],
+    [B4,0.25],[C5,0.25],[D5,0.25],[D5,0.25],[C5,4],
+    [F5,0.25],[G5,0.25],[G5,0.25],[F5,0.25],[G5,0.5],[D5,0.25],[D5,0.25],
+    [F5,0.5],[D5,0.25],[D5,0.25],
+    [C5,1],[G4,4],
+    [B4,0.25],[C5,0.25],[D5,0.25],[D5,0.25],[C5,3],
+    [E5,0.25],[E5,0.25],[E5,0.5],[C5,0.5],[E5,0.25],[E5,0.25],[E5,0.5],[C5,0.5],
+    [E5,0.25],[E5,0.25],[E5,0.5],[D5,0.5],[C5,0.5],[D5,1],[D5,0.5],[D5,0.5],
+    [B4,0.5],[D5,0.5],[D5,0.5],[B4,0.5],[D5,0.5],[D5,0.5],
+  ], repeat: 2 },
+
+  // Source: http://teixeiras.no.sapo.pt/musicas/o_mar1.mid (Wayback:
+  // https://web.archive.org/web/20160214/http://teixeiras.no.sapo.pt/musicas/o_mar1.mid).
+  // Track 9 (accordion) = vocal melody. 100% diatonic. BPM 100 (overrode MIDI 159
+  // — too fast for kids). 6 distinct durations.
+  { name: 'O mar enrola na areia (PT)', bpm: 100, notes: [
+    [G4,1],[E4,2],[G4,1],
+    [E4,1],[G4,1.5],[E4,0.5],[F4,1],
+    [G4,4],
+    [D4,1],[E4,1],[F4,1],[G4,1],
+    [A4,1],[B4,1],[C5,1],[B4,1],
+    [A4,0.25],[B4,0.25],[A4,0.5],[G4,2],[G4,1],
+    [E4,2],[G4,1],[E4,1],
+    [G4,1.5],[E4,0.5],[F4,1],[G4,4],
+    [D4,1],
+    [E4,1],[F4,1],[G4,1],[A4,1],
+    [B4,1],[C5,4],
+    [C5,1],[C5,1],[C5,1],
+    [D5,1],[D5,1],[D5,1],[D5,2],
+    [B4,1],[C5,2],
+    [C5,1],[C5,2],[A4,1],
+    [A4,0.25],[B4,1],[B4,1],[B4,1],[G4,1],
+    [F4,4],
+    [B4,1],[B4,1],[B4,1],[B4,1],
+    [C5,1],[C5,1],[C5,2],
+    [A4,1],[B4,2],[B4,1],
+    [B4,2],
+  ], repeat: 2 },
+
+  // Source: https://musescore.com/user/2548271/scores/13204321 (Tiroliro -
+  // Solidó de Traz-os-Montes, arr. Henrique Matos; Piano-Voice). Track 0 RH.
+  // 100% diatonic after +5 st. 4 distinct durations.
+  { name: 'Tiroliro (PT)', bpm: 120, notes: [
+    [G4,0.5],[G4,0.5],[E5,0.5],[E5,0.5],[E5,0.5],[E5,0.5],[E5,0.5],[E5,0.5],
+    [E5,0.5],[D5,0.5],[F5,1.5],[D5,0.5],[F5,1.5],
+    [E5,0.5],[D5,0.5],[D5,0.5],[D5,0.5],[B4,0.5],[D5,0.5],[D5,0.5],
+    [D5,0.5],[B4,0.5],[A4,1],[G4,2],
+    [G4,0.5],[G4,0.5],[E5,0.5],[E5,0.5],[E5,0.5],[E5,0.5],[E5,0.5],[E5,0.5],
+    [E5,0.5],[D5,0.5],[F5,1.5],[D5,0.5],[F5,1.5],
+    [E5,0.5],[D5,0.5],[D5,0.5],[D5,0.5],[B4,0.5],[D5,0.5],[D5,0.5],
+    [D5,0.5],[B4,0.5],[A4,1],[G4,2],
+    [G4,1],[C5,1],[C5,0.5],[C5,0.5],[E5,1],
+    [E5,0.5],[E5,0.5],[G4,1],[G4,0.5],[B4,0.5],[D5,0.5],[D5,0.5],
+    [D5,0.5],[D5,0.5],[G4,0.5],[G4,0.5],
+  ], repeat: 2 },
+
+  // Source: https://musescore.com/joao_galindro_santos/scores/5526252 (Piano
+  // solo easy, arr. João Galindro Santos). 100% diatonic, no transpose.
+  // 4 distinct durations.
+  { name: 'Fui ao jardim da Celeste (PT)', bpm: 100, notes: [
+    [E4,0.5],[E4,0.5],[C4,0.5],[E4,0.5],[C4,0.5],[E4,0.5],[G4,0.5],[G4,0.5],
+    [D4,0.5],[E4,0.5],[F4,1],[E4,0.5],[D4,0.5],[E4,0.5],[C4,0.5],
+    [E4,0.5],[E4,0.5],[C4,0.5],[E4,0.5],[C4,0.5],[E4,0.5],[G4,0.5],[G4,0.5],
+    [D4,0.5],[E4,0.5],[F4,1],[G4,1],[C4,1],
+    [E4,0.5],[E4,0.5],[C4,0.5],[E4,0.5],[C4,0.5],[E4,0.5],[G4,0.5],[G4,0.5],
+    [D4,0.5],[E4,0.5],[F4,1],[E4,0.5],[D4,0.5],[E4,0.5],[C4,0.5],
+    [E4,0.5],[E4,0.5],[C4,0.5],[E4,0.5],[C4,0.5],[E4,0.5],[G4,0.5],[G4,0.5],
+    [D4,0.5],[E4,0.5],[F4,1],[G4,1],[C4,2],
+    [D4,1],[E4,1],[F4,4],
+    [G4,1],
+    [C4,1],[B3,1],[A3,1],[B3,4],
+  ], repeat: 2 },
+
+  // Source: https://imslp.org/wiki/Ó_Rama,_Ó_Que_Linda_Rama_(Rebelo,_José_Eduardo)
+  // (Zerebelo arr., CC-BY-SA). Top voice extracted from SATB MIDI (octave 4+).
+  // 100% diatonic after +2 st transpose. 5 distinct durations.
+  { name: 'Oh rama, oh que linda rama (PT)', bpm: 120, notes: [
+    [E4,1.5],[E4,1],[D4,0.5],[E4,1],
+    [F4,0.5],[G4,1],[F4,0.5],[E4,2],
+    [G4,0.5],[A4,1.5],[A4,1],[G4,0.5],[F4,1],
+    [G4,0.5],[A4,1.5],[G4,2],
+    [F4,0.5],[E4,1],[E4,0.5],[E4,1],[E4,0.5],
+    [D4,1],[E4,0.5],[F4,1],[E4,0.5],[D4,2],
+    [G4,0.5],[B4,1.5],[B4,1],
+    [A4,0.5],[G4,1],[F4,0.5],[E4,4],
+    [G4,0.5],[C5,1.5],
+    [C5,1],[B4,0.5],[C5,1],[D5,0.5],[E5,1],
+    [D5,0.5],[C5,2],[E5,0.5],[F5,1.5],
+    [F5,1],[E5,0.5],[D5,1],[E5,0.5],[F5,1.5],
+    [E5,2],[D5,0.5],[C5,1.5],
+    [C5,1],[C5,0.5],[G4,1],[C5,0.5],
+    [D5,1],[C5,0.5],[B4,2],[D5,0.5],
+    [G5,1.5],[G5,1],[F5,0.5],[E5,1],
+  ], repeat: 2 },
+
+  // Source: U.Minho Cancioneiro #216 (Domingos Morais, 1998) via Wayback —
+  // https://web.archive.org/web/20040531173829im_/http://alfarrabio.di.uminho.pt/cancioneiro/kar/216.kar
+  // 2-voice arr.; top-voice extracted (350/660 notes). 100% diatonic, -5 st.
+  // 6 distinct durations.
+  { name: 'Trai trai (PT)', bpm: 100, notes: [
+    [E4,0.5],[E4,0.75],[D4,0.25],[D4,0.5],[F4,0.25],[E4,0.25],[C4,1.5],
+    [G4,0.5],[G4,0.75],[F4,0.25],[F4,0.5],[A4,0.25],[G4,0.25],[E4,1.5],
+    [G3,0.5],[E4,0.75],[E4,0.25],[E4,0.5],[F4,0.25],[G4,0.25],[B4,1.5],
+    [A4,0.25],[G4,0.25],[B4,0.5],[A4,0.25],[G4,0.25],[B4,0.5],[A4,0.25],
+    [G4,0.25],[E4,1.5],
+    [G4,0.5],[G4,0.5],[F4,0.25],[G4,0.25],[A4,0.5],[F4,0.5],[E4,1.5],
+    [G4,0.5],[G4,0.5],[F4,0.25],[G4,0.25],[A4,0.5],[F4,0.5],[E4,1],[E4,0.5],
+    [E4,0.5],[A4,0.75],[A4,0.25],[F4,0.5],[F4,0.5],[G4,1],[E4,0.5],
+    [E4,0.5],[A4,0.75],[A4,0.25],[F4,0.5],[F4,0.5],[G4,1],[E4,0.5],
+    [E4,0.5],[A4,1],[F4,0.5],[F4,0.5],[G4,1],[E4,0.5],
+    [E4,0.5],[F4,1],[D4,0.5],[D4,0.5],[E4,2],
+    [E4,0.5],[E4,0.75],[D4,0.25],[D4,0.5],[F4,0.25],[E4,0.25],[C4,1.5],
+  ], repeat: 2 },
+
+  // Source: https://musescore.com/user/11858902/scores/4589102 (HealthFizz,
+  // "Traditional music - Malhão", beginner piano). 100% diatonic, no transpose.
+  // 3 distinct durations. IOI dominance 0.25@53% + 0.125@38% — real rhythm.
+  { name: 'Ó malhão, malhão (PT)', bpm: 120, notes: [
+    [C5,0.25],[C5,0.25],[C5,0.5],[B4,0.25],[A4,0.25],[G4,0.5],[G4,0.5],[G4,1.5],
+    [B4,0.5],[B4,0.5],[A4,0.25],[G4,0.25],[C5,0.5],[C5,0.5],[C5,1.5],
+    [C5,0.25],[C5,0.25],[C5,0.5],[B4,0.25],[A4,0.25],[G4,0.5],[G4,0.5],[G4,1.5],
+    [B4,0.5],[B4,0.5],[A4,0.25],[G4,0.25],[C5,0.5],[C5,0.5],[C5,1.5],
+    [G4,0.25],[G4,0.25],[G4,0.5],[A4,0.5],[G4,0.5],[B4,0.25],[B4,0.25],[B4,0.5],
+    [A4,0.5],[G4,0.5],
+    [G4,0.25],[F4,0.25],[E4,0.5],[D4,0.5],[C4,0.5],[C4,0.5],[C4,1.5],
+    [C5,0.25],[C5,0.25],[C5,0.5],[B4,0.25],[A4,0.25],[G4,0.5],[G4,0.5],[G4,1.5],
+    [B4,0.5],[B4,0.5],[A4,0.25],[G4,0.25],[C5,0.5],[C5,0.5],[C5,1.5],
+  ], repeat: 2 },
+
+  // Source: https://musescore.com/user/2548271/scores/23898547 (Henrique Matos,
+  // "Vira do Minho – Popular ca.1910", flute+piano arr.). Track 0 flute = melody.
+  // 98.2% diatonic after -3 st. 4 distinct durations.
+  { name: 'Vira do Minho (PT)', bpm: 120, notes: [
+    [E4,0.5],[A4,1],[C5,0.5],[B4,0.5],[A4,0.5],[G4,0.5],[A4,1],
+    [E4,0.5],[A4,1],[E4,0.5],[D4,1],[D4,0.5],
+    [D4,0.5],[C4,0.5],[B3,0.5],[C4,2],[E4,0.5],
+    [A4,1],[C5,0.5],[B4,0.5],[A4,0.5],[G4,0.5],[A4,1],
+    [E4,0.5],[A4,1],[E4,0.5],[D4,1],[D4,0.5],[D4,0.5],
+    [C4,0.5],[B3,0.5],[A3,2],[E4,0.5],[F4,1],
+    [G4,0.5],[A4,0.5],[G4,0.5],[F4,0.5],[A4,1],[E4,0.5],
+    [A4,1],[E4,0.5],[D4,1],[D4,0.5],[D4,0.5],[C4,0.5],
+    [B3,0.5],[C4,1.5],[A3,1],[E4,0.5],[F4,1],
+    [G4,0.5],[A4,0.5],[G4,0.5],[F4,0.5],[A4,1],[E4,0.5],
+    [A4,1],[E4,0.5],[D4,1],[D4,0.5],[D4,0.5],[C4,0.5],
+  ], repeat: 2 },
+
+  // Source: https://musescore.com/joao_galindro_santos/scores/5526246 (Galindro
+  // Santos arr.). MuseScore title "Havia um pastorzinho" — canonical PT melody;
+  // user's lyric variant ("leva as ovelhas") is sung to the same tune.
+  // 100% diatonic after -5 st. Monophonic. 3 distinct durations.
+  { name: 'O pastorzinho (PT)', bpm: 100, notes: [
+    [G3,0.5],[C4,0.5],[B3,0.5],[A3,0.5],[G3,0.5],[A3,1],[G3,0.5],
+    [G3,0.5],[A3,0.5],[G3,0.5],[A3,0.5],[B3,0.5],[C4,1.5],
+    [G3,0.5],[C4,0.5],[B3,0.5],[A3,0.5],[G3,0.5],[A3,1],[G3,0.5],
+    [G3,0.5],[A3,0.5],[G3,0.5],[A3,0.5],[B3,0.5],[C4,0.5],[G3,0.5],[A3,0.5],
+    [B3,0.5],[C4,1],[C4,1],[C4,0.5],[G3,0.5],[A3,0.5],
+    [G3,0.5],[A3,1],[A3,1],[A3,0.5],[G3,0.5],[D4,0.5],
+    [C4,0.5],[B3,1],[B3,1],[B3,0.5],[G3,0.5],[A3,0.5],
+    [B3,0.5],[C4,1],[C4,1],[C4,1.5],
+    [G3,0.5],[C4,0.5],[B3,0.5],[A3,0.5],[G3,0.5],[A3,1],[G3,0.5],
+    [G3,0.5],[A3,0.5],[G3,0.5],[A3,0.5],[B3,0.5],[C4,1.5],
+  ], repeat: 2 },
+
+  // Source: https://www.mamalisa.com/midi/a_saia_da_rosa.mid (Mamá Lisa's World,
+  // page p=1133). 100% diatonic, no transpose, monophonic. 5 distinct durations.
+  // IOI dominance 64% — real rhythm (Mama Lisa MIDIs are usually karaoke-flat
+  // but this one is hand-arranged).
+  { name: 'Ó Rosa, arredonda a saia (PT)', bpm: 100, notes: [
+    [G3,0.5],[E4,0.5],[E4,0.25],[D4,0.25],[E4,0.5],[F4,0.5],[E4,0.5],[C4,1],
+    [G3,0.5],[E4,0.5],[E4,0.25],[D4,0.25],[E4,0.5],[F4,0.5],[D4,1.5],
+    [G3,0.5],[F4,0.5],[F4,0.25],[F4,0.25],[F4,0.5],[E4,0.5],[G4,0.75],[D4,0.25],
+    [E4,0.5],
+    [F4,0.5],[E4,0.5],[D4,0.5],[C4,0.5],[B3,0.5],[C4,1.5],
+    [G3,0.5],[E4,0.5],[E4,0.25],[D4,0.25],[E4,0.5],[F4,0.5],[E4,0.5],[C4,1],
+    [G3,0.5],[E4,0.5],[E4,0.25],[D4,0.25],[E4,0.5],[F4,0.5],[D4,1.5],
+    [G3,0.5],[F4,0.5],[F4,0.25],[F4,0.25],[F4,0.5],[E4,0.5],[G4,0.75],[D4,0.25],
+    [E4,0.5],
+    [F4,0.5],[E4,0.5],[D4,0.5],[C4,0.5],[B3,0.5],
+  ], repeat: 2 },
+
+  // Source: https://www.mamalisa.com/midi/barata.mid (Mamá Lisa's World, p=872).
+  // 100% diatonic. 3 distinct durations. IOI 88% borderline but quarter notes
+  // at line endings give clear melodic structure (not karaoke).
+  { name: 'A barata diz que tem (PT)', bpm: 80, notes: [
+    [G4,0.5],[F4,0.5],[E4,0.5],[D4,0.5],[E4,0.5],[F4,0.5],[G4,1],
+    [G4,0.5],[A4,0.5],[F4,0.5],[E4,0.5],[F4,0.5],[G4,0.5],[E4,1],
+    [C4,0.5],[C4,0.5],[A4,0.5],[A4,0.5],[A4,0.5],[A4,0.5],[A4,0.5],[A4,0.5],
+    [B4,0.5],[C5,0.5],[D5,0.5],[C5,0.5],[B4,0.5],[A4,0.5],[G4,1],
+    [G4,0.5],[G4,0.5],[C5,1],[E4,0.5],[E4,0.5],[G4,1],
+    [D4,0.5],[E4,0.5],[G4,0.5],[F4,0.5],[E4,0.5],[D4,0.5],
+  ], repeat: 2 },
+
+  // Source: U.Minho Cancioneiro #212 (Domingos Morais, 1998) via Wayback —
+  // https://web.archive.org/web/20040118025336im_/http://alfarrabio.di.uminho.pt/cancioneiro/kar/212.kar
+  // 2-voice arr.; top-voice extracted. Fá M / Lento / 4/4. 100% diatonic, -5 st.
+  // 4 distinct durations.
+  { name: 'Os olhos da Marianita (PT)', bpm: 100, notes: [
+    [G3,1],[C4,1],[C4,0.5],[G3,0.5],[C4,1],
+    [D4,1],[E4,1],[G4,2],
+    [G4,1],[B4,1],[B4,0.5],[A4,0.5],[G4,1],
+    [F4,1],[E4,3],
+    [G3,1],[C4,1],[C4,0.5],[G3,0.5],[C4,1],
+    [D4,1],[E4,1],[G4,2],
+    [G4,1],[B4,1],[B4,0.5],[A4,0.5],[G4,1],
+    [F4,1],[E4,3],
+    [E4,1],[A4,1],[A4,0.5],[G4,0.5],[F4,1],
+    [E4,1],[D4,3],
+    [F4,1],[B4,1],[B4,0.5],[A4,0.5],[G4,1],
+    [F4,1],[E4,3],
+    [E4,1],[A4,1],[A4,0.5],[G4,0.5],[F4,1],
+    [E4,1],[D4,3],
+    [F4,1],[B4,1],[B4,0.5],[A4,0.5],[G4,1],
+    [F4,1],[E4,3],
+  ], repeat: 2 },
+
+  // Source: https://www.mamalisa.com/midi/o_meu_chapeu.mid (Mama Lisa BR-PT
+  // p=2528). PT/BR uses same melody as international "Mon chapeau / Mein Hut",
+  // adapted from Paganini's Carnevale di Venezia (1829). 100% diatonic, -5 st.
+  // 4 distinct durations. IOI 73% — passes strict test.
+  { name: 'O meu chapéu tem três bicos (PT)', bpm: 180, notes: [
+    [D4,1],[G4,2],[D4,1],
+    [D4,1],[C4,1],[B3,1],[C4,1],
+    [A3,3],[A3,1],
+    [B3,1],[C4,1],[C4,1],[D4,1],
+    [E4,2],[D4,1],[B3,4],
+    [D4,1],
+    [G4,2],[D4,1],[D4,1],
+    [C4,1],[B3,1],[C4,1],[A3,3],
+    [A3,1],[B3,1],
+    [C4,2],[D4,1],[E4,2],
+    [D4,1],
+  ], repeat: 2 },
+
+];
+
+// Song scheduler state: songIdx points into a reshuffled queue so adjacent
+// plays don't repeat. songNoteIdx walks the current song's notes. Each song
+// is sung N times in a row before advancing — kids' songs are repetitive by
+// nature, and looping fills the rain longer than a single pass of a short
+// melody. Per-song `repeat` overrides the default.
+const SONG_REPEAT_DEFAULT = 3;
+let songQueue = [];
+let songIdx = -1;
+let songNoteIdx = 0;
+let songRepIdx = 0;
+
+function songRepeatCount(idx) {
+  return SONGS[idx]?.repeat ?? SONG_REPEAT_DEFAULT;
+}
+function reshuffleSongs() {
+  songQueue = SONGS.map((_, i) => i);
+  for (let i = songQueue.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [songQueue[i], songQueue[j]] = [songQueue[j], songQueue[i]];
+  }
+}
+function pickNextSong() {
+  if (songQueue.length === 0) reshuffleSongs();
+  songIdx = songQueue.shift();
+  songNoteIdx = 0;
+  songRepIdx = 0;
+}
+function currentSongNote() {
+  if (songIdx < 0) pickNextSong();
+  const song = SONGS[songIdx];
+  if (songNoteIdx >= song.notes.length) {
+    pickNextSong();
+    return SONGS[songIdx].notes[0];
+  }
+  return song.notes[songNoteIdx];
+}
+function advanceSong() {
+  songNoteIdx++;
+  if (songIdx >= 0 && songNoteIdx >= SONGS[songIdx].notes.length) {
+    songRepIdx++;
+    if (songRepIdx < songRepeatCount(songIdx)) {
+      songNoteIdx = 0; // sing the same melody again
+      return;
+    }
+    pickNextSong();
+  }
+}
+
 function rainActive() {
+  if (!rainAllowed) return false;
   if (!settings.fallingLetters) return false;
   if (!settings.quests) return false;
   if (settingsDialog.open) return false;
@@ -1412,23 +1904,63 @@ function randomDecoyDigit(avoid) {
   return String(d);
 }
 
+// Pick a key whose pitch matches the song's next note. Quest letter/digit is
+// injected when its pitch fits (exact pentatonic class or one step away), or
+// force-injected once the budget is exhausted so quest progress never stalls.
 function pickRainKey() {
+  const [targetFreq] = currentSongNote();
+
   const needLetter = !!(state.word || state.bonus);
   const needDigit = !!state.eq;
   const correctLetter = needLetter ? nextLetterKey() : null;
   const correctDigit = needDigit ? String(state.eqAnswer) : null;
+  const letterFreq = correctLetter ? KEY_TO_FREQ[correctLetter.toUpperCase()] : null;
+  const digitFreq = correctDigit ? KEY_TO_FREQ[correctDigit] : null;
+  const letterDist = scaleDist(letterFreq, targetFreq);
+  const digitDist = scaleDist(digitFreq, targetFreq);
 
-  const slot = rainCycle++ % 4;
-  if (slot === 0 && correctLetter) return correctLetter;
-  if (slot === 1 && correctDigit) return correctDigit;
-  if (slot === 2 && needLetter) return randomDecoyLetter(correctLetter);
-  if (slot === 3 && needDigit) return randomDecoyDigit(state.eqAnswer);
-  // fallbacks
-  if (correctLetter) return correctLetter;
-  if (correctDigit) return correctDigit;
-  if (needLetter) return randomDecoyLetter(null);
-  if (needDigit) return randomDecoyDigit(-1);
-  return null;
+  // 1) Patience exhausted → force-inject (melody hiccups for one beat).
+  if (correctLetter && letterInjectBudget >= QUEST_INJECT_BUDGET) {
+    letterInjectBudget = 0;
+    if (needDigit) digitInjectBudget++;
+    return correctLetter;
+  }
+  if (correctDigit && digitInjectBudget >= QUEST_INJECT_BUDGET) {
+    digitInjectBudget = 0;
+    if (needLetter) letterInjectBudget++;
+    return correctDigit;
+  }
+
+  // 2) Close-enough inject. When both fit, pick the closer; tie → letter.
+  const letterFits = letterDist <= 1;
+  const digitFits = digitDist <= 1;
+  if (letterFits && (!digitFits || letterDist <= digitDist)) {
+    letterInjectBudget = 0;
+    if (needDigit) digitInjectBudget++;
+    return correctLetter;
+  }
+  if (digitFits) {
+    digitInjectBudget = 0;
+    if (needLetter) letterInjectBudget++;
+    return correctDigit;
+  }
+
+  // 3) No quest inject → spawn a melody-correct decoy at exactly the song's
+  // freq. Prefer letters for letter-quests, digits for math-only.
+  if (needLetter) letterInjectBudget++;
+  if (needDigit) digitInjectBudget++;
+  let pool = FREQ_TO_KEYS.get(targetFreq) || [];
+  if (pool.length > 1) {
+    const wantDigit = needDigit && !needLetter;
+    const filtered = pool.filter(k => wantDigit ? /[0-9]/.test(k) : /[A-Z]/.test(k));
+    if (filtered.length) pool = filtered;
+  }
+  if (pool.length === 0) {
+    // Song note isn't in FREQ_TO_KEYS (shouldn't happen with curated SONGS,
+    // but be defensive) — fall back to a random alphabet letter.
+    return ALPHA[Math.floor(Math.random() * 26)].toLowerCase();
+  }
+  return pool[Math.floor(Math.random() * pool.length)].toLowerCase();
 }
 
 function spawnRainBubble() {
@@ -1446,7 +1978,10 @@ function spawnRainBubble() {
   const xvw = 4 + Math.random() * 88;
   const sx1 = (Math.random() * 80 - 40);
   const sx2 = (Math.random() * 80 - 40);
-  const dur = 11 + Math.random() * 5;
+  // Fixed fall duration so spawn order = arrival order — popping in order
+  // plays the song's melody in order. Horizontal sway stays random for visual
+  // variety; only the vertical timing is locked.
+  const dur = 13;
   b.style.setProperty('--x', xvw + 'vw');
   b.style.setProperty('--sx1', sx1 + 'px');
   b.style.setProperty('--sx2', sx2 + 'px');
@@ -1455,6 +1990,8 @@ function spawnRainBubble() {
   // Pop on first pointer crossing — mouse hover, touch drag-through, and
   // Magic Remote cursor sweep all use the same gesture. 250ms settling
   // window so a bubble spawning under a stationary cursor doesn't insta-pop.
+  // Safe for quest letters: those are click-only (see makeTappable), so a
+  // hovering mouse won't accidentally type them.
   b.dataset.bornAt = String(Date.now());
   b.dataset.key = key;
   // On touch, the browser captures the pointer to the initial target which
@@ -1468,18 +2005,29 @@ function spawnRainBubble() {
     if (Date.now() - Number(b.dataset.bornAt) < 250) return;
     onRainTap(b, key);
   });
-  // Click stays as a fallback for any pointer input that bypasses enter.
   b.addEventListener('click', (e) => {
     e.stopPropagation();
     onRainTap(b, key);
   });
-  b.addEventListener('animationend', () => b.remove());
+  b.addEventListener('animationend', () => { b.remove(); updateNextRainMarker(); });
   rainContainer.appendChild(b);
+  updateNextRainMarker();
+}
+
+// Mark the oldest unpopped bubble as `.next` — that's the song's next note.
+// Bubbles are appended in spawn order and all fall at the same speed, so the
+// first non-popped child is also the lowest on screen and the next to ground.
+function updateNextRainMarker() {
+  const next = rainContainer.querySelector('.rain-bubble:not(.pop)');
+  for (const b of rainContainer.querySelectorAll('.rain-bubble.next')) {
+    if (b !== next) b.classList.remove('next');
+  }
+  if (next) next.classList.add('next');
 }
 
 // Global swipe-through pop: even if pointer capture holds the touch to the
 // initial element, pointermove still fires on the window. elementFromPoint
-// finds whichever bubble is currently under the finger.
+// finds whichever bubble is currently under the finger or cursor.
 window.addEventListener('pointermove', (e) => {
   if (settingsDialog.open) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -1489,7 +2037,7 @@ window.addEventListener('pointermove', (e) => {
   onRainTap(el, el.dataset.key);
 });
 
-function onRainTap(bubble, key) {
+function popBubble(bubble) {
   if (bubble.classList.contains('pop')) return;
   // Freeze the bubble at its current rendered position so the pop animation
   // doesn't jump back to the rain-fall starting transform.
@@ -1507,19 +2055,56 @@ function onRainTap(bubble, key) {
   void bubble.offsetWidth; // force reflow before swapping to pop animation
   bubble.classList.add('pop');
   setTimeout(() => bubble.remove(), 500);
+  updateNextRainMarker();
+}
+
+function onRainTap(bubble, key) {
+  if (bubble.classList.contains('pop')) return;
+  popBubble(bubble);
   window.dispatchEvent(new KeyboardEvent('keydown', { key }));
 }
 
+// Pop the oldest in-flight rain bubble whose letter/digit matches `key`.
+// Lets a real keypress visually pop the corresponding falling bubble.
+function popMatchingBubble(key) {
+  if (!key || key.length !== 1) return;
+  const norm = normalize(key).toLowerCase();
+  let oldest = null;
+  let oldestTime = Infinity;
+  for (const b of rainContainer.querySelectorAll('.rain-bubble:not(.pop)')) {
+    if (b.dataset.key !== norm) continue;
+    const t = Number(b.dataset.bornAt) || 0;
+    if (t < oldestTime) { oldestTime = t; oldest = b; }
+  }
+  if (oldest) popBubble(oldest);
+}
+
+// Beat-driven scheduler: every tick spawns a bubble (if active) and waits
+// the current song note's duration before the next. Inactive periods (settings
+// open, no quest) idle on a steady BEAT_MS pulse without advancing the song —
+// so when activity resumes, the melody picks up where it left off.
+// Quarter-note duration for the currently-playing song, derived from its
+// canonical bpm. Falls back to BEAT_MS when no song is selected.
+function currentBeatMs() {
+  if (songIdx < 0) return BEAT_MS;
+  const bpm = SONGS[songIdx].bpm;
+  return bpm > 0 ? 60000 / bpm : BEAT_MS;
+}
+
 function rainTick() {
-  if (!rainActive()) return;
+  if (!rainActive()) {
+    rainTimer = setTimeout(rainTick, BEAT_MS);
+    return;
+  }
+  const [, beats] = currentSongNote();
   spawnRainBubble();
+  advanceSong();
+  rainTimer = setTimeout(rainTick, beats * currentBeatMs());
 }
 
 function startRain() {
   if (rainTimer) return;
-  rainTimer = setInterval(rainTick, RAIN_INTERVAL_MS);
-  // immediate first spawn so the user sees something quickly
-  setTimeout(rainTick, 400);
+  rainTimer = setTimeout(rainTick, 400);
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
