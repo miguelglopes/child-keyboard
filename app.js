@@ -79,10 +79,386 @@ const LETTERS = {
   },
 };
 
+// Per-theme letters. Each theme replaces the base LETTERS for the keys it
+// covers; uncovered keys fall back to LETTERS. A missing `en` map falls back
+// to `pt` (names that are the same in both). PT character names must match
+// the Portuguese (PT-PT) dub (e.g. Chickaletta → Galinheta, Wildstar →
+// Estrela); never guess one — leave the character out until it's confirmed.
+// Icons are either emoji or a character image (see ch()). Character themes
+// (kids' shows) mix their characters with things from the show, are picked
+// from settings only — never part of the auto rotation — and carry their own
+// background particles.
+
+// Character art is copyrighted, so assets/chars/ is gitignored and fetched by
+// tools/fetch-art.sh (160px WebP, a few KB each). Every character has an
+// emoji shown when its image is missing; it rides in the URL fragment so an
+// icon stays a single string everywhere it's passed around.
+const CHAR_FALLBACK = {
+  paw: {
+    ryder: '🛵', chase: '🚓', marshall: '🚒', skye: '🚁', rubble: '🚧', rocky: '♻️',
+    zuma: '🚤', everest: '❄️', tracker: '🌴', liberty: '🛴', chickaletta: '🐔',
+  },
+  masha: {
+    masha: '👧', urso: '🐻', panda: '🐼', pinguim: '🐧', lobo: '🐺', coelho: '🐰',
+    cabra: '🐐', tigre: '🐯', esquilo: '🐿️', porquinha: '🐷',
+  },
+  unicorn: {
+    sophia: '🌈', wildstar: '🦄', ava: '🌸', leaf: '🌿', layla: '📖', glacier: '❄️',
+    isabel: '🏅', river: '💧', valentina: '👑', cinder: '🔥', rory: '⚡', storm: '⛈️',
+  },
+  panda: { panda: '🐼', pipa: '💛', pedro: '🛹', clarinha: '👑', matias: '📚' },
+  mickey: {
+    mickey: '🐭', minnie: '🎀', donald: '🦆', margarida: '🌼', pateta: '🧢', pluto: '🐕',
+    patinhas: '💰', clarabela: '🐄', horacio: '🐴', tico: '🐿️', teco: '🌰',
+  },
+};
+const ch = (theme, id) => `assets/chars/${theme}/${id}.webp#${CHAR_FALLBACK[theme][id]}`;
+const isImageIcon = (icon) => icon.startsWith('assets/');
+
+const THEME_CONTENT = {
+  rainbow: {
+    letters: {
+      pt: {
+        B: [['Balão', '🎈'], ['Borboleta', '🦋'], ['Bolo', '🎂']],
+        C: [['Coração', '❤️'], ['Coroa', '👑']],
+        D: [['Doce', '🍬'], ['Diamante', '💎']],
+        E: [['Estrela', '⭐']],
+        F: [['Fada', '🧚'], ['Flor', '🌸']],
+        G: [['Gelado', '🍦']],
+        L: [['Laço', '🎀']],
+        M: [['Morango', '🍓']],
+        P: [['Presente', '🎁'], ['Princesa', '👸'], ['Papagaio', '🪁']],
+        S: [['Sereia', '🧜‍♀️']],
+        U: [['Unicórnio', '🦄']],
+      },
+      en: {
+        B: [['Balloon', '🎈'], ['Butterfly', '🦋']],
+        C: [['Cupcake', '🧁'], ['Crown', '👑']],
+        D: [['Diamond', '💎']],
+        F: [['Fairy', '🧚'], ['Flower', '🌸']],
+        G: [['Gift', '🎁']],
+        H: [['Heart', '❤️']],
+        K: [['Kite', '🪁']],
+        L: [['Lollipop', '🍭']],
+        M: [['Mermaid', '🧜‍♀️']],
+        R: [['Rainbow', '🌈'], ['Ribbon', '🎀']],
+        S: [['Star', '⭐'], ['Strawberry', '🍓']],
+        U: [['Unicorn', '🦄']],
+      },
+    },
+  },
+  space: {
+    letters: {
+      pt: {
+        A: [['Astronauta', '🧑‍🚀'], ['Asteroide', '🪨']],
+        C: [['Cometa', '☄️']],
+        E: [['Estrela', '⭐'], ['Extraterrestre', '👽']],
+        F: [['Foguetão', '🚀']],
+        G: [['Galáxia', '🌌']],
+        L: [['Lua', '🌙']],
+        M: [['Marte', '🔴']],
+        N: [['Nave', '🛸']],
+        P: [['Planeta', '🪐']],
+        S: [['Sol', '☀️'], ['Satélite', '🛰️']],
+        T: [['Terra', '🌍'], ['Telescópio', '🔭']],
+      },
+      en: {
+        A: [['Astronaut', '🧑‍🚀'], ['Alien', '👽']],
+        C: [['Comet', '☄️']],
+        E: [['Earth', '🌍']],
+        G: [['Galaxy', '🌌']],
+        M: [['Moon', '🌙'], ['Mars', '🔴']],
+        P: [['Planet', '🪐']],
+        R: [['Rocket', '🚀']],
+        S: [['Sun', '☀️'], ['Star', '⭐'], ['Satellite', '🛰️']],
+        T: [['Telescope', '🔭']],
+        U: [['UFO', '🛸']],
+      },
+    },
+  },
+  ocean: {
+    letters: {
+      pt: {
+        A: [['Alforreca', '🪼'], ['Âncora', '⚓']],
+        B: [['Baleia', '🐋'], ['Barco', '⛵']],
+        C: [['Caranguejo', '🦀'], ['Concha', '🐚'], ['Coral', '🪸']],
+        F: [['Foca', '🦭']],
+        G: [['Golfinho', '🐬']],
+        L: [['Lula', '🦑'], ['Lagosta', '🦞']],
+        M: [['Mergulhador', '🤿'], ['Mar', '🌊']],
+        O: [['Onda', '🌊'], ['Ostra', '🦪']],
+        P: [['Peixe', '🐟'], ['Polvo', '🐙'], ['Pinguim', '🐧']],
+        S: [['Sereia', '🧜‍♀️']],
+        T: [['Tubarão', '🦈'], ['Tartaruga', '🐢']],
+      },
+      en: {
+        A: [['Anchor', '⚓']],
+        B: [['Boat', '⛵']],
+        C: [['Crab', '🦀'], ['Coral', '🪸']],
+        D: [['Dolphin', '🐬']],
+        F: [['Fish', '🐟']],
+        J: [['Jellyfish', '🪼']],
+        L: [['Lobster', '🦞']],
+        M: [['Mermaid', '🧜‍♀️']],
+        O: [['Octopus', '🐙'], ['Oyster', '🦪']],
+        P: [['Penguin', '🐧']],
+        S: [['Shark', '🦈'], ['Seal', '🦭'], ['Shell', '🐚'], ['Squid', '🦑']],
+        T: [['Turtle', '🐢']],
+        W: [['Whale', '🐋'], ['Wave', '🌊']],
+      },
+    },
+  },
+  jungle: {
+    letters: {
+      pt: {
+        A: [['Árvore', '🌳']],
+        B: [['Borboleta', '🦋']],
+        C: [['Cogumelo', '🍄'], ['Coruja', '🦉'], ['Crocodilo', '🐊']],
+        E: [['Elefante', '🐘'], ['Esquilo', '🐿️']],
+        F: [['Folha', '🍃'], ['Flor', '🌺']],
+        G: [['Gorila', '🦍'], ['Girafa', '🦒']],
+        H: [['Hipopótamo', '🦛']],
+        I: [['Iguana', '🦎']],
+        J: [['Javali', '🐗']],
+        L: [['Leão', '🦁'], ['Lobo', '🐺']],
+        M: [['Macaco', '🐒']],
+        O: [['Ouriço', '🦔']],
+        P: [['Papagaio', '🦜'], ['Pinheiro', '🌲']],
+        R: [['Raposa', '🦊']],
+        S: [['Serpente', '🐍'], ['Sapo', '🐸']],
+        T: [['Tigre', '🐯']],
+        U: [['Urso', '🐻']],
+        V: [['Veado', '🦌']],
+        Z: [['Zebra', '🦓']],
+      },
+      en: {
+        B: [['Bear', '🐻'], ['Butterfly', '🦋']],
+        C: [['Crocodile', '🐊']],
+        D: [['Deer', '🦌']],
+        E: [['Elephant', '🐘']],
+        F: [['Fox', '🦊'], ['Frog', '🐸']],
+        G: [['Gorilla', '🦍'], ['Giraffe', '🦒']],
+        H: [['Hedgehog', '🦔']],
+        L: [['Lion', '🦁'], ['Leaf', '🍃']],
+        M: [['Monkey', '🐒'], ['Mushroom', '🍄']],
+        O: [['Owl', '🦉']],
+        P: [['Parrot', '🦜'], ['Pine', '🌲']],
+        S: [['Snake', '🐍'], ['Squirrel', '🐿️']],
+        T: [['Tiger', '🐯'], ['Tree', '🌳']],
+        W: [['Wolf', '🐺']],
+        Z: [['Zebra', '🦓']],
+      },
+    },
+  },
+  baby: {
+    letters: {
+      pt: {
+        B: [['Bebé', '👶'], ['Biberão', '🍼'], ['Balão', '🎈']],
+        C: [['Coração', '❤️']],
+        E: [['Estrela', '⭐']],
+        L: [['Lua', '🌙']],
+        M: [['Mamã', '👩']],
+        N: [['Nuvem', '☁️']],
+        P: [['Papá', '👨'], ['Patinho', '🐤']],
+        S: [['Sol', '☀️']],
+        U: [['Ursinho', '🧸']],
+      },
+      en: {
+        B: [['Baby', '👶'], ['Bottle', '🍼'], ['Balloon', '🎈']],
+        C: [['Cloud', '☁️']],
+        D: [['Duck', '🐤'], ['Daddy', '👨']],
+        H: [['Heart', '❤️']],
+        M: [['Mommy', '👩'], ['Moon', '🌙']],
+        S: [['Star', '⭐'], ['Sun', '☀️']],
+        T: [['Teddy', '🧸']],
+      },
+    },
+  },
+  paw: {
+    particles: ['🐾', '🦴', '⭐'],
+    letters: {
+      pt: {
+        A: [['Ambulância', '🚑']],
+        B: [['Bombeiro', '🧑‍🚒'], ['Barco', '🚤']],
+        C: [['Chase', ch('paw', 'chase')], ['Camião', '🚚']],
+        E: [['Everest', ch('paw', 'everest')]],
+        G: [['Grua', '🏗️'], ['Galinheta', ch('paw', 'chickaletta')]],
+        H: [['Helicóptero', '🚁']],
+        L: [['Liberty', ch('paw', 'liberty')]],
+        M: [['Marshall', ch('paw', 'marshall')], ['Mar', '🌊']],
+        N: [['Neve', '❄️']],
+        O: [['Osso', '🦴']],
+        P: [['Polícia', '👮'], ['Pata', '🐾']],
+        R: [['Ryder', ch('paw', 'ryder')], ['Reciclagem', '♻️'], ['Rubble', ch('paw', 'rubble')], ['Rocky', ch('paw', 'rocky')]],
+        S: [['Skye', ch('paw', 'skye')], ['Sirene', '🚨']],
+        T: [['Tracker', ch('paw', 'tracker')], ['Torre', '🗼']],
+        Z: [['Zuma', ch('paw', 'zuma')]],
+      },
+      en: {
+        A: [['Ambulance', '🚑']],
+        B: [['Boat', '🚤'], ['Bone', '🦴']],
+        C: [['Chase', ch('paw', 'chase')], ['Crane', '🏗️'], ['Chickaletta', ch('paw', 'chickaletta')]],
+        E: [['Everest', ch('paw', 'everest')]],
+        F: [['Firefighter', '🧑‍🚒']],
+        H: [['Helicopter', '🚁']],
+        L: [['Liberty', ch('paw', 'liberty')]],
+        M: [['Marshall', ch('paw', 'marshall')]],
+        P: [['Police', '👮'], ['Paw', '🐾']],
+        R: [['Ryder', ch('paw', 'ryder')], ['Recycling', '♻️'], ['Rubble', ch('paw', 'rubble')], ['Rocky', ch('paw', 'rocky')]],
+        S: [['Skye', ch('paw', 'skye')], ['Siren', '🚨'], ['Snow', '❄️']],
+        T: [['Tracker', ch('paw', 'tracker')], ['Tower', '🗼'], ['Truck', '🚚']],
+        Z: [['Zuma', ch('paw', 'zuma')]],
+      },
+    },
+  },
+  masha: {
+    particles: ['🐝', '🌼', '🍓'],
+    letters: {
+      pt: {
+        A: [['Abelha', '🐝'], ['Árvore', '🌳']],
+        C: [['Cogumelo', '🍄'], ['Cabra', ch('masha', 'cabra')], ['Cenoura', '🥕'], ['Casa', '🏠']],
+        E: [['Esquilo', ch('masha', 'esquilo')]],
+        F: [['Floresta', '🌲']],
+        L: [['Lobo', ch('masha', 'lobo')], ['Lebre', ch('masha', 'coelho')]],
+        M: [['Masha', ch('masha', 'masha')], ['Mel', '🍯'], ['Morango', '🍓']],
+        N: [['Neve', '❄️']],
+        P: [['Panda', ch('masha', 'panda')], ['Peixe', '🐟'], ['Pinguim', ch('masha', 'pinguim')], ['Porquinha', ch('masha', 'porquinha')]],
+        T: [['Tigre', ch('masha', 'tigre')], ['Trenó', '🛷']],
+        U: [['Urso', ch('masha', 'urso')]],
+      },
+      en: {
+        B: [['Bear', ch('masha', 'urso')], ['Bee', '🐝']],
+        C: [['Carrot', '🥕']],
+        F: [['Forest', '🌲'], ['Fish', '🐟']],
+        G: [['Goat', ch('masha', 'cabra')]],
+        H: [['Hare', ch('masha', 'coelho')], ['Honey', '🍯'], ['House', '🏠']],
+        M: [['Masha', ch('masha', 'masha')], ['Mushroom', '🍄']],
+        P: [['Panda', ch('masha', 'panda')], ['Penguin', ch('masha', 'pinguim')], ['Pig', ch('masha', 'porquinha')]],
+        S: [['Squirrel', ch('masha', 'esquilo')], ['Snow', '❄️'], ['Sled', '🛷'], ['Strawberry', '🍓']],
+        T: [['Tiger', ch('masha', 'tigre')], ['Tree', '🌳']],
+        W: [['Wolf', ch('masha', 'lobo')]],
+      },
+    },
+  },
+  unicorn: {
+    particles: ['✨', '🦄', '🌈'],
+    letters: {
+      pt: {
+        A: [['Ava', ch('unicorn', 'ava')], ['Água', '💧'], ['Academia', '🏰']],
+        C: [['Cinza', ch('unicorn', 'cinder')], ['Castelo', '🏰'], ['Cristal', '💎']],
+        E: [['Estrela', ch('unicorn', 'wildstar')]],
+        F: [['Folha', ch('unicorn', 'leaf')], ['Fogo', '🔥'], ['Flor', '🌸']],
+        G: [['Glaciar', ch('unicorn', 'glacier')], ['Gelo', '🧊']],
+        I: [['Isabel', ch('unicorn', 'isabel')], ['Ilha', '🏝️']],
+        L: [['Layla', ch('unicorn', 'layla')], ['Livro', '📖']],
+        M: [['Magia', '✨']],
+        P: [['Planta', '🌱']],
+        R: [['Rory', ch('unicorn', 'rory')], ['Rio', ch('unicorn', 'river')], ['Raio', '⚡']],
+        S: [['Sophia', ch('unicorn', 'sophia')]],
+        T: [['Tempestade', ch('unicorn', 'storm')]],
+        U: [['Unicórnio', '🦄']],
+        V: [['Valentina', ch('unicorn', 'valentina')], ['Varinha', '🪄']],
+      },
+      en: {
+        A: [['Ava', ch('unicorn', 'ava')]],
+        B: [['Book', '📖']],
+        C: [['Cinder', ch('unicorn', 'cinder')], ['Castle', '🏰'], ['Crystal', '💎']],
+        F: [['Fire', '🔥'], ['Flower', '🌸']],
+        G: [['Glacier', ch('unicorn', 'glacier')]],
+        I: [['Isabel', ch('unicorn', 'isabel')], ['Ice', '🧊'], ['Island', '🏝️']],
+        L: [['Layla', ch('unicorn', 'layla')], ['Leaf', ch('unicorn', 'leaf')]],
+        M: [['Magic', '✨']],
+        P: [['Plant', '🌱']],
+        R: [['Rory', ch('unicorn', 'rory')], ['Rainbow', '🌈'], ['River', ch('unicorn', 'river')]],
+        S: [['Sophia', ch('unicorn', 'sophia')], ['Star', '⭐'], ['Storm', ch('unicorn', 'storm')]],
+        U: [['Unicorn', '🦄']],
+        V: [['Valentina', ch('unicorn', 'valentina')]],
+        W: [['Wildstar', ch('unicorn', 'wildstar')], ['Water', '💧'], ['Wand', '🪄']],
+      },
+    },
+  },
+  panda: {
+    particles: ['🐼', '🎵', '🎈'],
+    letters: {
+      pt: {
+        B: [['Bateria', '🥁']],
+        C: [['Clarinha', ch('panda', 'clarinha')], ['Coroa', '👑'], ['Caricas', '🎶'], ['Chaleira', '🫖'], ['Colher', '🥄']],
+        D: [['Dança', '💃']],
+        E: [['Estrela', '⭐']],
+        F: [['Festa', '🎉'], ['Fruta', '🍎']],
+        G: [['Guitarra', '🎸']],
+        L: [['Livro', '📚']],
+        M: [['Matias', ch('panda', 'matias')], ['Microfone', '🎤'], ['Música', '🎵']],
+        O: [['Óculos', '👓']],
+        P: [['Panda', ch('panda', 'panda')], ['Pinguim', '🐧'], ['Pipa', ch('panda', 'pipa')], ['Piano', '🎹'], ['Pedro', ch('panda', 'pedro')]],
+        S: [['Sopa', '🥣'], ['Skate', '🛹'], ['Sabão', '🧼']],
+        T: [['Taça', '🍵']],
+      },
+    },
+  },
+  mickey: {
+    particles: ['🎀', '⭐', '🎈'],
+    letters: {
+      pt: {
+        B: [['Balão', '🎈'], ['Barco', '⛵'], ['Bolota', '🌰']],
+        C: [['Clarabela', ch('mickey', 'clarabela')], ['Carro', '🚗'], ['Chapéu', '🎩'], ['Casa', '🏠']],
+        D: [['Donald', ch('mickey', 'donald')], ['Dinheiro', '💰']],
+        E: [['Estrela', '⭐']],
+        F: [['Ferramentas', '🧰'], ['Flor', '🌼']],
+        H: [['Horácio', ch('mickey', 'horacio')]],
+        L: [['Laço', '🎀'], ['Luvas', '🧤']],
+        M: [['Mickey', ch('mickey', 'mickey')], ['Minnie', ch('mickey', 'minnie')], ['Margarida', ch('mickey', 'margarida')]],
+        O: [['Osso', '🦴']],
+        P: [['Pateta', ch('mickey', 'pateta')], ['Pluto', ch('mickey', 'pluto')]],
+        Q: [['Queijo', '🧀']],
+        S: [['Sapatos', '👞']],
+        T: [['Tico', ch('mickey', 'tico')], ['Teco', ch('mickey', 'teco')], ['Tio Patinhas', ch('mickey', 'patinhas')]],
+      },
+      en: {
+        A: [['Acorn', '🌰']],
+        B: [['Balloon', '🎈'], ['Boat', '⛵'], ['Bow', '🎀'], ['Bone', '🦴']],
+        C: [['Clarabelle', ch('mickey', 'clarabela')], ['Car', '🚗'], ['Chip', ch('mickey', 'tico')], ['Cheese', '🧀']],
+        D: [['Donald', ch('mickey', 'donald')], ['Daisy', ch('mickey', 'margarida')], ['Dale', ch('mickey', 'teco')]],
+        F: [['Flower', '🌼']],
+        G: [['Goofy', ch('mickey', 'pateta')], ['Gloves', '🧤']],
+        H: [['Horace', ch('mickey', 'horacio')], ['Hat', '🎩'], ['House', '🏠']],
+        M: [['Mickey', ch('mickey', 'mickey')], ['Minnie', ch('mickey', 'minnie')], ['Money', '💰']],
+        P: [['Pluto', ch('mickey', 'pluto')]],
+        S: [['Scrooge', ch('mickey', 'patinhas')], ['Star', '⭐'], ['Shoes', '👞']],
+        T: [['Tools', '🧰']],
+      },
+    },
+  },
+};
+
+function themeLetters(lang) {
+  const t = THEME_CONTENT[effectiveTheme()];
+  return t ? (t.letters[lang] || t.letters.pt) : null;
+}
+
+// Icons come from our own tables, so innerHTML is safe here.
+function iconHtml(icon) {
+  if (!isImageIcon(icon)) return icon;
+  const [src, fallback] = icon.split('#');
+  return `<img class="icon-img" src="${src}" data-fallback="${fallback}" alt="" draggable="false"` +
+    ` onerror="this.replaceWith(this.dataset.fallback)">`;
+}
+
+// Warm the image cache for the active theme so the first press of each
+// character letter doesn't flash an empty box (matters on the TV).
+function preloadThemeIcons() {
+  const letters = THEME_CONTENT[effectiveTheme()]?.letters || {};
+  for (const map of Object.values(letters)) {
+    for (const variants of Object.values(map)) {
+      for (const [, icon] of variants) if (isImageIcon(icon)) new Image().src = icon.split('#')[0];
+    }
+  }
+}
+
 // Cycle counter per letter so repeat presses show different variants
 const letterCycle = {};
 function pickLetterContent(norm) {
-  const variants = LETTERS[settings.lang]?.[norm];
+  const variants = themeLetters(settings.lang)?.[norm] || LETTERS[settings.lang]?.[norm];
   if (!variants || !variants.length) return null;
   const i = (letterCycle[norm] || 0) % variants.length;
   letterCycle[norm] = (letterCycle[norm] || 0) + 1;
@@ -165,8 +541,9 @@ const DEFAULTS = {
 // Flatten LETTERS variants into a flat (word, emoji) pool
 function buildEmojiWords(lang) {
   const out = [];
-  for (const variants of Object.values(LETTERS[lang])) {
+  for (const variants of Object.values(themeLetters(lang) || LETTERS[lang])) {
     for (const [word, emoji] of variants) {
+      if (word.includes(' ')) continue; // quests can't type a space ("Tio Patinhas")
       out.push({ raw: word, word: normalize(word), emoji });
     }
   }
@@ -229,19 +606,22 @@ function audio() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   return audioCtx;
 }
-function beep(freq, dur = 0.18, type = 'triangle', gain = 0.18) {
+// `delay` (seconds) schedules on the audio clock — sample-accurate and no
+// main-thread timer, unlike setTimeout.
+function beep(freq, dur = 0.18, type = 'triangle', gain = 0.18, delay = 0) {
   if (!settings.sound) return;
   const ctx = audio();
+  const t = ctx.currentTime + delay;
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
   osc.type = type;
   osc.frequency.value = freq;
-  g.gain.setValueAtTime(0, ctx.currentTime);
-  g.gain.linearRampToValueAtTime(gain, ctx.currentTime + 0.02);
-  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   osc.connect(g).connect(ctx.destination);
-  osc.start();
-  osc.stop(ctx.currentTime + dur);
+  osc.start(t);
+  osc.stop(t + dur);
 }
 // C-major DIATONIC: 7 notes (C D E F G A B) per octave. Extended from the
 // original pentatonic so we can play traditional PT-PT folk songs that lean
@@ -313,19 +693,24 @@ function sweep(fromHz, toHz, dur, type = 'sawtooth', gain = 0.14) {
   osc.stop(ctx.currentTime + dur);
 }
 
+// One shared 1s white-noise buffer; each hit plays a random slice of it
+// instead of allocating and filling a fresh buffer per note.
+let noiseBuf = null;
 function noise(dur = 0.08, gain = 0.15) {
   if (!settings.sound) return;
   const ctx = audio();
-  const buf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * dur)), ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+  if (!noiseBuf) {
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+  }
   const src = ctx.createBufferSource();
-  src.buffer = buf;
+  src.buffer = noiseBuf;
   const g = ctx.createGain();
   g.gain.setValueAtTime(gain, ctx.currentTime);
   g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
   src.connect(g).connect(ctx.destination);
-  src.start();
+  src.start(0, Math.random() * Math.max(0, 1 - dur), dur);
 }
 
 // Per-theme instruments: each takes a frequency (Hz) and plays a single note.
@@ -334,7 +719,7 @@ function bellSynth(freq) {
   beep(freq, 0.55, 'sine', 0.16);
   beep(freq * 2, 0.45, 'triangle', 0.05);
   if (!settings.reduceEffects) {
-    setTimeout(() => beep(freq * 2.76, 0.4, 'sine', 0.03), 6);
+    beep(freq * 2.76, 0.4, 'sine', 0.03, 0.006);
   }
 }
 
@@ -342,7 +727,7 @@ function musicBoxSynth(freq) {
   beep(freq, 0.45, 'triangle', 0.10);
   beep(freq * 2, 0.4, 'sine', 0.05);
   if (!settings.reduceEffects) {
-    setTimeout(() => beep(freq * 4, 0.18, 'sine', 0.02), 25);
+    beep(freq * 4, 0.18, 'sine', 0.02, 0.025);
   }
 }
 
@@ -390,7 +775,7 @@ function chipSynth(freq) {
   osc.start(t);
   osc.stop(t + 0.3);
   if (!settings.reduceEffects) {
-    setTimeout(() => beep(freq * 2, 0.08, 'square', 0.05), 80);
+    beep(freq * 2, 0.08, 'square', 0.05, 0.08);
   }
 }
 
@@ -400,6 +785,11 @@ const THEME_INSTRUMENTS = {
   ocean:   padSynth,
   jungle:  marimbaSynth,
   space:   chipSynth,
+  paw:     chipSynth,
+  masha:   musicBoxSynth,
+  unicorn: bellSynth,
+  panda:   marimbaSynth,
+  mickey:  musicBoxSynth,
 };
 
 function themeSynth() {
@@ -516,7 +906,7 @@ function effectiveMathLevel() {
 function setCount(n) {
   state.keyCount = n;
   counterEl.textContent = n;
-  localStorage.setItem('ck-count', String(n));
+  persistSoon();
 }
 
 // ─── STATS ──────────────────────────────────────────────────────────────────
@@ -566,8 +956,24 @@ function record(kind) {
   const all = 'allTime' + kind;
   stats[today] = (stats[today] || 0) + 1;
   stats[all] = (stats[all] || 0) + 1;
+  persistSoon();
+}
+
+// Every keypress bumps the counter and stats; coalesce those writes into one
+// per second instead of two JSON+localStorage writes per key. Flushed when the
+// page is hidden or closed so nothing is lost.
+let persistTimer = null;
+function persistSoon() {
+  if (!persistTimer) persistTimer = setTimeout(persistNow, 1000);
+}
+function persistNow() {
+  clearTimeout(persistTimer);
+  persistTimer = null;
+  localStorage.setItem('ck-count', String(state.keyCount));
   saveStats();
 }
+window.addEventListener('pagehide', persistNow);
+document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
 
 // ─── PACE ───────────────────────────────────────────────────────────────────
 // Exponentially-decayed completion rate. Each win adds 1 to `paceScore`; the
@@ -593,7 +999,9 @@ function paceBump() {
 function renderPace() {
   if (!paceEl) return;
   const rate = paceDecayedScore(performance.now()) / PACE_TAU * 60;
-  paceEl.textContent = rate < 0.5 ? '' : `${Math.round(rate)}/min`;
+  const text = rate < 0.5 ? '' : `${Math.round(rate)}/min`;
+  // Polled every 500ms; skip the DOM write (and repaint) when unchanged.
+  if (paceEl.textContent !== text) paceEl.textContent = text;
 }
 setInterval(renderPace, 500);
 
@@ -613,10 +1021,10 @@ function spawn(big, small) {
     el.innerHTML = `
       <div class="card-inner">
         <div class="card-back"></div>
-        <div class="card-front"><span>${big}</span>${small ? `<span class="emoji">${small}</span>` : ''}</div>
+        <div class="card-front"><span>${big}</span>${small ? `<span class="emoji">${iconHtml(small)}</span>` : ''}</div>
       </div>`;
   } else {
-    el.innerHTML = `<span>${big}</span>` + (small ? `<span class="emoji">${small}</span>` : '');
+    el.innerHTML = `<span>${big}</span>` + (small ? `<span class="emoji">${iconHtml(small)}</span>` : '');
   }
   let x, y;
   if (spawnOriginOverride) {
@@ -638,6 +1046,9 @@ function confetti(n = 60) {
   const colors = effectiveTheme() === 'baby'
     ? ['#ffffff', '#ff1f1f']
     : ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93', '#ff924c', '#06d6a0'];
+  // One fragment insert and one cleanup timer instead of n of each.
+  const frag = document.createDocumentFragment();
+  const pieces = [];
   for (let i = 0; i < n; i++) {
     const c = document.createElement('div');
     c.className = 'confetto';
@@ -645,11 +1056,11 @@ function confetti(n = 60) {
     c.style.background = colors[i % colors.length];
     c.style.animationDelay = (Math.random() * 0.3) + 's';
     c.style.transform = `rotate(${Math.random() * 360}deg)`;
-    confettiEl.appendChild(c);
-    setTimeout(() => c.remove(), 2500);
+    frag.appendChild(c);
+    pieces.push(c);
   }
-  document.body.classList.add('flash');
-  setTimeout(() => document.body.classList.remove('flash'), 400);
+  confettiEl.appendChild(frag);
+  setTimeout(() => { for (const c of pieces) c.remove(); }, 2500);
 }
 
 // ─── TAPPABLE ───────────────────────────────────────────────────────────────
@@ -692,7 +1103,7 @@ function renderWord() {
   if (lv === 0) {
     const big = document.createElement('div');
     big.className = 'quest-bigemoji';
-    big.textContent = state.wordEmoji || '?';
+    big.innerHTML = state.wordEmoji ? iconHtml(state.wordEmoji) : '?';
     wordBody.appendChild(big);
 
     const cardsWrap = document.createElement('div');
@@ -719,7 +1130,7 @@ function renderWord() {
   if (state.wordEmoji) {
     const em = document.createElement('span');
     em.className = 'quest-emoji';
-    em.textContent = state.wordEmoji;
+    em.innerHTML = iconHtml(state.wordEmoji);
     wordBody.appendChild(em);
   }
 
@@ -842,7 +1253,7 @@ function renderBonus() {
 
   const em = document.createElement('div');
   em.className = 'bonus-emoji';
-  em.textContent = state.bonus.emoji;
+  em.innerHTML = iconHtml(state.bonus.emoji);
   el.appendChild(em);
 
   const revealed = document.createElement('div');
@@ -1163,6 +1574,7 @@ function applyTheme() {
   document.documentElement.classList.toggle('reduce-effects', settings.reduceEffects);
   document.documentElement.style.setProperty('--motion', settings.reduceMotion ? '0.4' : '1');
   renderBgParticles();
+  preloadThemeIcons();
 }
 
 // Each iconic letter switches the theme to its world.
@@ -1240,6 +1652,22 @@ function renderBgParticles() {
       b.style.setProperty('--x', (Math.random() * 100) + '%');
       b.style.setProperty('--sway', ((Math.random() < 0.5 ? -1 : 1) * (20 + Math.random() * 80)) + 'px');
       container.appendChild(b);
+    }
+  } else if (THEME_CONTENT[theme]?.particles) {
+    // Character themes: the show's emoji drift down like the jungle leaves.
+    const emoji = THEME_CONTENT[theme].particles;
+    const n = Math.floor(14 * density);
+    for (let i = 0; i < n; i++) {
+      const l = document.createElement('div');
+      l.className = 'leaf';
+      l.textContent = emoji[i % emoji.length];
+      l.style.setProperty('--x', (Math.random() * 100) + '%');
+      l.style.setProperty('--dur', (14 + Math.random() * 12) + 's');
+      l.style.setProperty('--spin', (3.5 + Math.random() * 4) + 's');
+      l.style.setProperty('--delay', (-Math.random() * 20) + 's');
+      l.style.setProperty('--sway', (Math.random() * 60 - 30) + 'vw');
+      l.style.setProperty('--size', (1.2 + Math.random() * 1.2) + 'rem');
+      container.appendChild(l);
     }
   } else if (theme === 'jungle') {
     ['b-a', 'b-b', 'b-c'].forEach((cls, i) => {
@@ -2029,6 +2457,9 @@ function updateNextRainMarker() {
 // initial element, pointermove still fires on the window. elementFromPoint
 // finds whichever bubble is currently under the finger or cursor.
 window.addEventListener('pointermove', (e) => {
+  // No bubbles (rain off, e.g. plain desktop) → skip the hit-test, which can
+  // force a layout on every mouse move.
+  if (!rainContainer.firstChild) return;
   if (settingsDialog.open) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
   if (!el || !el.classList || !el.classList.contains('rain-bubble')) return;

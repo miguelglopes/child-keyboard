@@ -48,6 +48,13 @@ cp "$ROOT_DIR/index.html" \
    "$ROOT_DIR/icon.svg" \
    "$ROOT_DIR/manifest.webmanifest" \
    "$STAGING/"
+# Show art for the character themes is gitignored (tools/fetch-art.sh);
+# bundle it when present, otherwise those themes show emoji and plain colour.
+if [ -d "$ROOT_DIR/assets" ]; then
+  cp -r "$ROOT_DIR/assets" "$STAGING/"
+else
+  echo "  (no assets/ — run tools/fetch-art.sh for the character themes' art)"
+fi
 cp "$WEBOS_DIR/appinfo.json" \
    "$WEBOS_DIR/icon.png" \
    "$WEBOS_DIR/largeIcon.png" \

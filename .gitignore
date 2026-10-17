@@ -2,3 +2,7 @@
 *.log
 node_modules/
 .playwright-mcp/
+
+# Copyrighted show art — fetched by tools/fetch-art.sh, never committed
+assets/chars/
+assets/backgrounds/

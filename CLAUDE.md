@@ -13,6 +13,18 @@ Two deployment targets share the **same source files** at the project root:
 
 `app.js` does runtime platform detection via `const isWebOS = !!window.PalmSystem || /web0s|webos/i.test(navigator.userAgent);` and uses it to skip the kiosk/keyboard-lock listeners (already-fullscreen on TV, no Esc key). Everything else is shared. **Do not duplicate source files between targets.**
 
+## Character art (kids'-show themes)
+
+The Patrulha Pata / Masha / Academia Unicórnio / Panda e os Caricas / Mickey themes use official character images and a still from each show as the background. They're copyrighted and the repo is public, so `assets/chars/` and `assets/backgrounds/` are **gitignored** — never commit them. Prefer existing official art over drawing our own (hand-drawn scenery was rejected).
+
+```bash
+tools/fetch-art.sh          # download from Fandom wikis → assets/chars/<theme>/<id>.webp (160px)
+                            #   + assets/backgrounds/<theme>.webp (1280×720, pre-darkened)
+tools/push-art.sh           # scp them to the web server (the rest deploys via git pull)
+```
+
+`webos/build.sh` bundles `assets/` into the `.ipk` when present. A missing character image falls back to the emoji in `CHAR_FALLBACK` (`app.js`); a missing background leaves the theme colour.
+
 ## webOS deploy flow
 
 ```bash
