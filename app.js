@@ -1611,7 +1611,7 @@ function themeForKey(key) {
 // Throttle theme switching so it doesn't flip on every keypress: require the
 // child to hit a theme's trigger keys several times AND wait through a
 // cooldown since the last switch. Counts reset on switch.
-const THEME_SWITCH_COOLDOWN_MS = 30000;
+const THEME_SWITCH_COOLDOWN_MS = 120000; // 2 min
 const THEME_HITS_REQUIRED = 7;
 let lastThemeSwitchAt = 0;
 const themeHits = {};
