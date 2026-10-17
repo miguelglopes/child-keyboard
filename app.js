@@ -85,9 +85,9 @@ const LETTERS = {
 // the Portuguese (PT-PT) dub (e.g. Chickaletta → Galinheta, Wildstar →
 // Estrela); never guess one — leave the character out until it's confirmed.
 // Icons are either emoji or a character image (see ch()). Character themes
-// (kids' shows) mix their characters with things from the show, are picked
-// from settings only — never part of the auto rotation — and carry their own
-// background particles.
+// (kids' shows) mix their characters with things from the show and carry
+// their own background particles; in auto mode their characters' initials
+// switch to them (THEME_TRIGGERS).
 
 // Character art is copyrighted, so assets/chars/ is gitignored and fetched by
 // tools/fetch-art.sh (160px WebP, a few KB each). Every character has an
@@ -445,14 +445,25 @@ function iconHtml(icon) {
 }
 
 // Warm the image cache for the active theme so the first press of each
-// character letter doesn't flash an empty box (matters on the TV).
+// character letter doesn't flash an empty box (matters on the TV). decode()
+// also pre-decodes off the main thread, so the first spawn doesn't stall on a
+// WebP decode (noticeable on a Pi); the array keeps the decoded images alive.
+let preloadedIcons = [];
 function preloadThemeIcons() {
   const letters = THEME_CONTENT[effectiveTheme()]?.letters || {};
+  const imgs = [];
   for (const map of Object.values(letters)) {
     for (const variants of Object.values(map)) {
-      for (const [, icon] of variants) if (isImageIcon(icon)) new Image().src = icon.split('#')[0];
+      for (const [, icon] of variants) {
+        if (!isImageIcon(icon)) continue;
+        const img = new Image();
+        img.src = icon.split('#')[0];
+        img.decode?.().catch(() => {});
+        imgs.push(img);
+      }
     }
   }
+  preloadedIcons = imgs;
 }
 
 // Cycle counter per letter so repeat presses show different variants
@@ -1451,7 +1462,7 @@ function handleKey(rawKey) {
     spawn(rawKey, '🔢');
     say(rawKey);
     playNote(rawKey);
-    tryEquationAnswer(rawKey);
+    maybeSwitchTheme(rawKey, tryEquationAnswer(rawKey));
     return;
   }
 
@@ -1577,31 +1588,38 @@ function applyTheme() {
   preloadThemeIcons();
 }
 
-// Each iconic letter switches the theme to its world.
+// Every key on the keyboard (26 letters + 10 digits) nudges auto mode toward
+// one theme, four keys each, so all 9 auto themes are equally likely. Letters
+// lean on the theme's words where they can. Baby is settings-only.
 const THEME_TRIGGERS = {
-  ocean:   ['F', 'W', 'J'],    // Fish, Whale, Jellyfish
-  jungle:  ['L', 'M', 'T'],    // Lion, Monkey, Tiger
-  space:   ['S'],              // Sun / Sol
-  rainbow: ['K', 'Y'],         // Kite / Yo-yo (default-y)
+  ocean:   ['F', 'W', 'J', '1'],    // Fish, Whale, Jellyfish
+  jungle:  ['L', 'T', 'Z', '2'],    // Leão/Lion, Tigre/Tiger, Zebra
+  space:   ['S', 'E', 'N', '3'],    // Sol/Sun, Estrela/Earth, Nave
+  rainbow: ['K', 'Y', 'B', '4'],    // Kite, Yo-yo, Balão/Balloon
+  paw:     ['C', 'R', 'X', '5'],    // Chase, Ryder/Rubble/Rocky
+  masha:   ['M', 'U', '6', '7'],    // Masha, Urso
+  unicorn: ['V', 'I', 'A', '8'],    // Valentina, Isabel, Ava
+  panda:   ['P', 'G', 'O', '9'],    // Panda/Pipa/Pedro, Guitarra, Óculos
+  mickey:  ['D', 'H', 'Q', '0'],    // Donald, Horácio, Queijo
 };
-function themeForLetter(normLetter) {
-  for (const [theme, letters] of Object.entries(THEME_TRIGGERS)) {
-    if (letters.includes(normLetter)) return theme;
+function themeForKey(key) {
+  for (const [theme, keys] of Object.entries(THEME_TRIGGERS)) {
+    if (keys.includes(key)) return theme;
   }
   return null;
 }
 // Throttle theme switching so it doesn't flip on every keypress: require the
-// child to hit a theme's trigger letters several times AND wait through a
+// child to hit a theme's trigger keys several times AND wait through a
 // cooldown since the last switch. Counts reset on switch.
 const THEME_SWITCH_COOLDOWN_MS = 30000;
 const THEME_HITS_REQUIRED = 7;
 let lastThemeSwitchAt = 0;
 const themeHits = {};
 
-function maybeSwitchTheme(normLetter, wasQuestProgress) {
+function maybeSwitchTheme(key, wasQuestProgress) {
   if (settings.theme !== 'auto') return;
   if (wasQuestProgress) return;
-  const t = themeForLetter(normLetter);
+  const t = themeForKey(key);
   if (!t || t === currentTheme) return;
 
   themeHits[t] = (themeHits[t] || 0) + 1;

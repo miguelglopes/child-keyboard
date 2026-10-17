@@ -586,6 +586,15 @@ body.reduce-motion .sparkle { animation: none; opacity: 0.3; }
   vertical-align: middle;
 }
 .spawn .icon-img { height: 2.6em; }
+/* Images don't get the text-shadows the emoji get, so give them the same
+   shadows as filters. The filter sits on the <img>, not on the animated
+   parent, so it's rasterized once with the parent's layer — measured no fps
+   cost. Helps the art stand out against the busy show backgrounds. */
+.spawn .icon-img          { filter: drop-shadow(0 6px 14px rgba(0,0,0,0.4)); }
+.quest-emoji .icon-img    { filter: drop-shadow(0 4px 14px rgba(0,0,0,0.4)); }
+.quest-bigemoji .icon-img { filter: drop-shadow(0 10px 28px rgba(0,0,0,0.55)); }
+.bonus-emoji .icon-img    { filter: drop-shadow(0 0 32px var(--accent)) drop-shadow(0 12px 20px rgba(0,0,0,0.5)); }
+html.reduce-effects .icon-img { filter: none; }
 .spawn.v-pop  { animation: pop  calc(3.2s * var(--motion)) cubic-bezier(.2,.9,.2,1) forwards; }
 .spawn.v-drop { animation: drop calc(3.2s * var(--motion)) cubic-bezier(.2,.9,.2,1) forwards; }
 .spawn.v-spin { animation: spin calc(3.2s * var(--motion)) cubic-bezier(.2,.9,.2,1) forwards; }
