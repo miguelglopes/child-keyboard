@@ -25,6 +25,18 @@ tools/push-art.sh           # scp them to the web server (the rest deploys via g
 
 `webos/build.sh` bundles `assets/` into the `.ipk` when present. A missing character image falls back to the emoji in `CHAR_FALLBACK` (`app.js`); a missing background leaves the theme colour.
 
+## Voice clips
+
+Device speech synthesis is poor or missing on some platforms (Linux Chrome's only Portuguese voice is Brazilian; espeak/Piper read "L." as fifty), so everything `say()` speaks is pre-generated with Microsoft's neural voices (pt-PT Raquel, en-US Ava) through edge-tts. `say()` plays the clip for the exact text and falls back to `speechSynthesis` when there's none. Clips are gitignored like the art.
+
+```bash
+tools/fetch-voice.sh        # node lists every phrase from app.js's tables → assets/voice/<lang>/*.mp3
+                            #   + assets/voice/index.json; only new/changed phrases are synthesized
+tools/push-art.sh           # also copies assets/voice/ to the web server
+```
+
+Re-run both after adding or changing letters, words or spoken phrases. Letter names are spelled out for the TTS (`L. Leão` is synthesized as "Éle. Leão") — see `LETTER_NAMES` in `tools/voice/phrases.mjs`.
+
 ## webOS deploy flow
 
 ```bash

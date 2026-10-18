@@ -881,9 +881,49 @@ function pickVoice() {
       || null;
 }
 
+// Pre-generated neural-voice clips (tools/fetch-voice.sh) for everything the app
+// says: device TTS is poor on some platforms (Linux Chrome's only Portuguese
+// voice is Brazilian; espeak reads "L." as fifty). say() plays the clip for the
+// exact text when there is one, else falls back to speechSynthesis — also when
+// the clips aren't deployed (they're gitignored, like the show art).
+let voiceClips = {};
+fetch('assets/voice/index.json')
+  .then(r => (r.ok ? r.json() : {}))
+  .then(j => { voiceClips = j; })
+  .catch(() => {});
+const clipAudio = new Map(); // file → <audio>, reused so repeated phrases start instantly
+let playingClip = null;
+
+function stopClip() {
+  if (!playingClip) return;
+  playingClip.pause();
+  playingClip = null;
+}
+
+function playClip(text) {
+  const file = voiceClips[settings.lang]?.[text];
+  if (!file) return false;
+  let a = clipAudio.get(file);
+  if (!a) {
+    a = new Audio(`assets/voice/${file}`);
+    clipAudio.set(file, a);
+  }
+  playingClip = a;
+  a.currentTime = 0;
+  // AbortError = interrupted by the next say(); anything else (missing file…) → TTS
+  a.play().catch(e => { if (e.name !== 'AbortError' && playingClip === a) speakTTS(text); });
+  return true;
+}
+
 function say(text, { force = false } = {}) {
-  if (!window.speechSynthesis) return;
   if (!force && !settings.voice) return;
+  stopClip();
+  window.speechSynthesis?.cancel();
+  if (!playClip(text)) speakTTS(text);
+}
+
+function speakTTS(text) {
+  if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   const v = pickVoice();

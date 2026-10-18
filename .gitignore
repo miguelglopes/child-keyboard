@@ -6,3 +6,5 @@ node_modules/
 # Copyrighted show art — fetched by tools/fetch-art.sh, never committed
 assets/chars/
 assets/backgrounds/
+# Neural-voice clips (Microsoft voices via edge-tts) — tools/fetch-voice.sh, never committed
+assets/voice/
