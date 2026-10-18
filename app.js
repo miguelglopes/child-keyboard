@@ -86,8 +86,8 @@ const LETTERS = {
 // Estrela); never guess one — leave the character out until it's confirmed.
 // Icons are either emoji or a character image (see ch()). Character themes
 // (kids' shows) mix their characters with things from the show and carry
-// their own background particles; in auto mode their characters' initials
-// switch to them (THEME_TRIGGERS).
+// their own background particles; auto mode deals them in with the rest
+// (AUTO_THEMES).
 
 // Character art is copyrighted, so assets/chars/ is gitignored and fetched by
 // tools/fetch-art.sh (160px WebP, a few KB each). Every character has an
@@ -578,7 +578,7 @@ function saveSettings() {
 const settings = loadSettings();
 
 // Tracks the visually-active theme. In 'auto' mode, mutated by maybeSwitchTheme
-// as the child triggers theme letters; in fixed mode, kept in sync by applyTheme.
+// as the child plays; in fixed mode, kept in sync by applyTheme.
 let currentTheme = 'rainbow';
 function effectiveTheme() {
   return settings.theme === 'auto' ? currentTheme : settings.theme;
@@ -1493,7 +1493,7 @@ function handleKey(rawKey) {
     }
     const matchedQuest = tryWordLetter(norm);
     const matchedBonus = tryBonusLetter(norm);
-    maybeSwitchTheme(norm, matchedQuest || matchedBonus);
+    maybeSwitchTheme(matchedQuest || matchedBonus);
     return;
   }
 
@@ -1502,7 +1502,7 @@ function handleKey(rawKey) {
     spawn(rawKey, '🔢');
     say(rawKey);
     playNote(rawKey);
-    maybeSwitchTheme(rawKey, tryEquationAnswer(rawKey));
+    maybeSwitchTheme(tryEquationAnswer(rawKey));
     return;
   }
 
@@ -1549,8 +1549,6 @@ function randomDelight() {
 window.addEventListener('keydown', e => {
   // Adult settings shortcut — its own listener handles this
   if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 's') return;
-  // Leave native browser keys alone
-  if (e.key === 'F11' || e.key === 'F12') return;
   // Don't fire while in the settings dialog — it handles its own keys.
   if (settingsDialog.open) {
     if (e.key === 'Escape') return; // let dialog close natively
@@ -1586,6 +1584,7 @@ window.addEventListener('pointermove', (e) => {
 
 // Pointer/touch on stage = random key, spawned at the pointer's location
 window.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return; // left button only (touch and pen report 0)
   if (e.target.closest('button, dialog, label, select, input, [data-key]')) return;
   spawnOriginOverride = {
     x: (e.clientX / window.innerWidth) * 100,
@@ -1594,6 +1593,20 @@ window.addEventListener('pointerdown', (e) => {
   const keys = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   handleKey(keys[Math.floor(Math.random() * keys.length)]);
 });
+
+// Mouse lockdown: only the left button does anything. No context menu, no
+// middle-click autoscroll, no back/forward side buttons, no drag, and no
+// zoom (Ctrl+wheel, trackpad pinch, Safari gestures). Plain wheel is left
+// alone so the settings dialog still scrolls; the stage itself can't.
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+for (const type of ['mousedown', 'mouseup', 'auxclick']) {
+  window.addEventListener(type, (e) => { if (e.button !== 0) e.preventDefault(); });
+}
+window.addEventListener('dragstart', (e) => e.preventDefault());
+window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+for (const type of ['gesturestart', 'gesturechange']) {
+  window.addEventListener(type, (e) => e.preventDefault());
+}
 
 // ─── PARENT GATE ────────────────────────────────────────────────────────────
 // 3-second hold of the top-left corner opens settings. That's the whole gate —
@@ -1628,48 +1641,36 @@ function applyTheme() {
   preloadThemeIcons();
 }
 
-// Every key on the keyboard (26 letters + 10 digits) nudges auto mode toward
-// one theme, four keys each, so all 9 auto themes are equally likely. Letters
-// lean on the theme's words where they can. Baby is settings-only.
-const THEME_TRIGGERS = {
-  ocean:   ['F', 'W', 'J', '1'],    // Fish, Whale, Jellyfish
-  jungle:  ['L', 'T', 'Z', '2'],    // Leão/Lion, Tigre/Tiger, Zebra
-  space:   ['S', 'E', 'N', '3'],    // Sol/Sun, Estrela/Earth, Nave
-  rainbow: ['K', 'Y', 'B', '4'],    // Kite, Yo-yo, Balão/Balloon
-  paw:     ['C', 'R', 'X', '5'],    // Chase, Ryder/Rubble/Rocky
-  masha:   ['M', 'U', '6', '7'],    // Masha, Urso
-  unicorn: ['V', 'I', 'A', '8'],    // Valentina, Isabel, Ava
-  panda:   ['P', 'G', 'O', '9'],    // Panda/Pipa/Pedro, Guitarra, Óculos
-  mickey:  ['D', 'H', 'Q', '0'],    // Donald, Horácio, Queijo
-};
-function themeForKey(key) {
-  for (const [theme, keys] of Object.entries(THEME_TRIGGERS)) {
-    if (keys.includes(key)) return theme;
+// Auto mode deals the themes like a shuffled deck: every theme shows once,
+// in random order, before any repeats; then the deck is reshuffled (never
+// starting with the theme already on screen). Baby is settings-only.
+const AUTO_THEMES = ['ocean', 'jungle', 'space', 'rainbow', 'paw', 'masha', 'unicorn', 'panda', 'mickey'];
+let themeDeck = [];
+function nextAutoTheme() {
+  if (themeDeck.length === 0) {
+    themeDeck = AUTO_THEMES.filter(t => t !== currentTheme);
+    for (let i = themeDeck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [themeDeck[i], themeDeck[j]] = [themeDeck[j], themeDeck[i]];
+    }
   }
-  return null;
+  return themeDeck.pop();
 }
-// Throttle theme switching so it doesn't flip on every keypress: require the
-// child to hit a theme's trigger keys several times AND wait through a
-// cooldown since the last switch. Counts reset on switch.
+// Switch at most every 2 minutes, and only while the child is playing: the
+// first key after the cooldown deals the next theme. Keys that advance a
+// word quest or answer the sum don't count, so the scene never changes
+// mid-answer.
 const THEME_SWITCH_COOLDOWN_MS = 120000; // 2 min
-const THEME_HITS_REQUIRED = 7;
 let lastThemeSwitchAt = 0;
-const themeHits = {};
 
-function maybeSwitchTheme(key, wasQuestProgress) {
+function maybeSwitchTheme(wasQuestProgress) {
   if (settings.theme !== 'auto') return;
   if (wasQuestProgress) return;
-  const t = themeForKey(key);
-  if (!t || t === currentTheme) return;
-
-  themeHits[t] = (themeHits[t] || 0) + 1;
   if (performance.now() - lastThemeSwitchAt < THEME_SWITCH_COOLDOWN_MS) return;
-  if (themeHits[t] < THEME_HITS_REQUIRED) return;
 
-  currentTheme = t;
+  currentTheme = nextAutoTheme();
   applyTheme();
   lastThemeSwitchAt = performance.now();
-  for (const k of Object.keys(themeHits)) themeHits[k] = 0;
 }
 
 // ─── BACKGROUND PARTICLES ──────────────────────────────────────────────────
@@ -1980,28 +1981,13 @@ async function exitKiosk() {
 }
 
 // First user gesture sets wants=true; the regular listener re-enters if it drops.
-// webOS apps are already fullscreen — no need to request it or listen for Esc.
+// There's deliberately no key that leaves: only the Fullscreen switch in the
+// parent-gated settings calls exitKiosk(). webOS apps are already fullscreen.
 if (!isWebOS) {
   window.addEventListener('pointerdown', enterKiosk, { once: true });
   window.addEventListener('keydown', enterKiosk, { once: true });
   window.addEventListener('pointerdown', ensureKiosk);
   window.addEventListener('keydown', ensureKiosk);
-
-  // Hold Esc for 1.5s to exit kiosk — browser native hold-Esc isn't reliable
-  // once keyboard.lock() has captured the key, so we DIY it.
-  const ESC_HOLD_MS = 1500;
-  let escHoldTimer = null;
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || e.repeat || escHoldTimer) return;
-    escHoldTimer = setTimeout(() => {
-      escHoldTimer = null;
-      exitKiosk();
-    }, ESC_HOLD_MS);
-  }, true);
-  window.addEventListener('keyup', (e) => {
-    if (e.key !== 'Escape') return;
-    if (escHoldTimer) { clearTimeout(escHoldTimer); escHoldTimer = null; }
-  }, true);
 }
 
 // ─── RAIN (falling letter/digit bubbles) ───────────────────────────────────
