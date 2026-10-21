@@ -510,6 +510,7 @@ const PHRASES = {
     stats_bonus: 'Bonus rounds',
     bonus_label: 'NAME IT',
     hold_hint: 'Hold 3s',
+    child_themes: 'Child can pick the theme',
   },
   pt: {
     word: 'PALAVRA', math: 'MATEMÁTICA',
@@ -531,6 +532,21 @@ const PHRASES = {
     stats_bonus: 'Rondas bónus',
     bonus_label: 'ADIVINHA',
     hold_hint: 'Segura 3s',
+    child_themes: 'Criança escolhe o tema',
+  },
+};
+
+// Spoken and shown when the child picks a theme. 'auto' is the "Surprise" tile.
+const THEME_NAMES = {
+  en: {
+    paw: 'Paw Patrol', masha: 'Masha and the Bear', unicorn: 'Unicorn Academy', panda: 'Panda',
+    mickey: 'Mickey', rainbow: 'Rainbow', space: 'Space', ocean: 'Ocean', jungle: 'Jungle',
+    auto: 'Surprise',
+  },
+  pt: {
+    paw: 'Patrulha Pata', masha: 'Masha e o Urso', unicorn: 'Academia Unicórnio', panda: 'Panda e os Caricas',
+    mickey: 'Mickey', rainbow: 'Arco-íris', space: 'Espaço', ocean: 'Mar', jungle: 'Selva',
+    auto: 'Surpresa',
   },
 };
 
@@ -540,6 +556,7 @@ const DEFAULTS = {
   lang: 'pt',
   theme: 'auto',
   themeIntervalMin: 2, // auto mode: minutes between theme changes
+  childThemes: true, // kid's theme button + typing a theme's name
   sound: true,
   voice: true,
   quests: true,
@@ -595,6 +612,8 @@ const mathBody = document.getElementById('math-body');
 const counterEl = document.getElementById('counter');
 const confettiEl = document.getElementById('confetti');
 const parentCorner = document.getElementById('parent-corner');
+const themeBtn = document.getElementById('theme-btn');
+const themePicker = document.getElementById('theme-picker');
 const settingsDialog = document.getElementById('settings');
 
 // ─── I18N ───────────────────────────────────────────────────────────────────
@@ -1476,6 +1495,7 @@ function updateLevelLabels() {
 
 function handleKey(rawKey) {
   if (settingsDialog.open) return;
+  if (themePicker.classList.contains('open')) closeThemePicker();
 
   setCount(state.keyCount + 1);
   record('Keys');
@@ -1496,9 +1516,11 @@ function handleKey(rawKey) {
     }
     const matchedQuest = tryWordLetter(norm);
     const matchedBonus = tryBonusLetter(norm);
-    maybeSwitchTheme(matchedQuest || matchedBonus);
+    if (!typedThemeName(norm, matchedQuest || matchedBonus)) maybeSwitchTheme(matchedQuest || matchedBonus);
     return;
   }
+  // Any other key breaks a theme name being typed; '-' is skipped so ARCO-ÍRIS works.
+  if (rawKey !== '-') typedLetters = '';
 
   // Digit
   if (/^[0-9]$/.test(rawKey)) {
@@ -1588,7 +1610,7 @@ window.addEventListener('pointermove', (e) => {
 // Pointer/touch on stage = random key, spawned at the pointer's location
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return; // left button only (touch and pen report 0)
-  if (e.target.closest('button, dialog, label, select, input, [data-key]')) return;
+  if (e.target.closest('button, dialog, label, select, input, [data-key], #theme-picker')) return;
   spawnOriginOverride = {
     x: (e.clientX / window.innerWidth) * 100,
     y: (e.clientY / window.innerHeight) * 100,
@@ -1633,15 +1655,26 @@ parentCorner.addEventListener('pointercancel', cancelHold);
 
 // ─── SETTINGS ───────────────────────────────────────────────────────────────
 
+// The word and bonus quests draw from the theme's words, so a new theme deals
+// new ones — otherwise URSO would linger on into the Panda theme.
+let appliedTheme = null;
 function applyTheme() {
   if (settings.theme !== 'auto') currentTheme = settings.theme;
+  const themeChanged = appliedTheme !== null && appliedTheme !== effectiveTheme();
+  appliedTheme = effectiveTheme();
   document.body.className = 'theme-' + effectiveTheme() +
     (settings.quests ? '' : ' no-quests') +
+    (settings.childThemes ? '' : ' no-child-themes') +
     (settings.reduceMotion ? ' reduce-motion' : '');
   document.documentElement.classList.toggle('reduce-effects', settings.reduceEffects);
   document.documentElement.style.setProperty('--motion', settings.reduceMotion ? '0.4' : '1');
   renderBgParticles();
   preloadThemeIcons();
+  renderThemeButton();
+  if (themeChanged) {
+    newWord();
+    if (state.bonus) { closeBonus(); startBonus(); }
+  }
 }
 
 // Auto mode deals the themes like a shuffled deck: every theme shows once,
@@ -1673,6 +1706,91 @@ function maybeSwitchTheme(wasQuestProgress) {
   currentTheme = nextAutoTheme();
   applyTheme();
   lastThemeSwitchAt = performance.now();
+}
+
+// ─── CHILD THEME PICKER ─────────────────────────────────────────────────────
+// A tap on the top-right button opens big picture tiles; a pick sets the theme
+// exactly like the settings dropdown, so it stays until she picks again.
+// "Surprise" goes back to auto and deals a new theme straight away.
+
+const PICKER_TILES = [
+  ['paw', ['chase', 'skye']], ['masha', ['masha', 'urso']], ['unicorn', ['sophia', 'wildstar']],
+  ['panda', ['panda', 'pipa']], ['mickey', ['mickey', 'minnie']],
+  ['rainbow', '🌈'], ['space', '🚀'], ['ocean', '🐠'], ['jungle', '🦁'], ['auto', '🎲'],
+];
+const tileArt = (art, theme) => Array.isArray(art)
+  ? art.map(id => iconHtml(ch(theme, id))).join('')
+  : `<span class="tile-emoji">${art}</span>`;
+
+function renderThemeButton() {
+  const tile = PICKER_TILES.find(([t]) => t === effectiveTheme());
+  themeBtn.innerHTML = (tile ? tileArt(Array.isArray(tile[1]) ? tile[1].slice(0, 1) : tile[1], tile[0])
+    : '<span class="tile-emoji">🎨</span>') + '<span class="theme-btn-badge">🎨</span>';
+}
+
+let pickerTimer = null;
+function openThemePicker() {
+  const names = THEME_NAMES[settings.lang];
+  themePicker.innerHTML = '<div class="theme-grid">' + PICKER_TILES.map(([theme, art]) =>
+    `<button type="button" class="theme-tile${theme === effectiveTheme() ? ' current' : ''}" data-theme="${theme}">` +
+    `<span class="tile-art">${tileArt(art, theme)}</span><span class="tile-label">${names[theme]}</span></button>`
+  ).join('') + '</div>';
+  themePicker.classList.add('open');
+  themeSynth()(659.25);
+  clearTimeout(pickerTimer);
+  pickerTimer = setTimeout(closeThemePicker, 8000);
+}
+function closeThemePicker() {
+  themePicker.classList.remove('open');
+  clearTimeout(pickerTimer);
+}
+
+let themeToastTimer = null;
+function pickTheme(theme) {
+  closeThemePicker();
+  settings.theme = theme;
+  saveSettings();
+  if (theme === 'auto') {
+    currentTheme = nextAutoTheme();
+    lastThemeSwitchAt = performance.now();
+  }
+  applyTheme();
+  const name = THEME_NAMES[settings.lang][theme];
+  const toast = document.getElementById('theme-toast');
+  toast.textContent = name + '!';
+  toast.classList.add('show');
+  clearTimeout(themeToastTimer);
+  themeToastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+  say(name);
+  fanfare();
+  confetti(40);
+}
+
+themeBtn.addEventListener('click', () => {
+  if (themePicker.classList.contains('open')) closeThemePicker(); else openThemePicker();
+});
+themePicker.addEventListener('click', (e) => {
+  const tile = e.target.closest('.theme-tile');
+  if (tile) pickTheme(tile.dataset.theme); else closeThemePicker(); // backdrop tap
+});
+
+// Typing a theme's name switches to it — a hidden spelling reward. Names in
+// both languages work whatever the UI language. A letter that also advances
+// a quest doesn't count, so finishing the word quest MAR stays a quest win.
+const THEME_WORDS = {
+  rainbow: ['ARCOIRIS', 'RAINBOW'], space: ['ESPACO', 'SPACE'], ocean: ['MAR', 'OCEANO', 'OCEAN'],
+  jungle: ['SELVA', 'JUNGLE'], paw: ['PATRULHA', 'PATA', 'PAW'], masha: ['MASHA', 'URSO'],
+  unicorn: ['UNICORNIO', 'UNICORN'], panda: ['PANDA', 'CARICAS'], mickey: ['MICKEY', 'MINNIE'],
+};
+let typedLetters = '';
+function typedThemeName(norm, wasQuestProgress) {
+  typedLetters = (typedLetters + norm).slice(-12);
+  if (!settings.childThemes || wasQuestProgress) return false;
+  const theme = Object.keys(THEME_WORDS).find(t => THEME_WORDS[t].some(w => typedLetters.endsWith(w)));
+  if (!theme) return false;
+  typedLetters = '';
+  pickTheme(theme);
+  return true;
 }
 
 // ─── BACKGROUND PARTICLES ──────────────────────────────────────────────────
@@ -1862,6 +1980,7 @@ function openSettings() {
   document.getElementById('set-lang').value = settings.lang;
   document.getElementById('set-theme').value = settings.theme;
   document.getElementById('set-theme-interval').value = String(settings.themeIntervalMin);
+  document.getElementById('set-child-themes').checked = settings.childThemes;
   document.getElementById('set-sound').checked = settings.sound;
   document.getElementById('set-voice').checked = settings.voice;
   document.getElementById('set-quests').checked = settings.quests;
@@ -1887,6 +2006,7 @@ document.getElementById('settings-form').addEventListener('change', (e) => {
   settings.lang = document.getElementById('set-lang').value;
   settings.theme = document.getElementById('set-theme').value;
   settings.themeIntervalMin = parseInt(document.getElementById('set-theme-interval').value, 10);
+  settings.childThemes = document.getElementById('set-child-themes').checked;
   settings.sound = document.getElementById('set-sound').checked;
   settings.voice = document.getElementById('set-voice').checked;
   settings.quests = document.getElementById('set-quests').checked;

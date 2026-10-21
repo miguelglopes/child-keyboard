@@ -11,6 +11,7 @@ Inspired by [tinyfingers.net](https://tinyfingers.net/), with more depth so it g
 - **Math quest (bottom)** — an equation like `3 + 2 = ?` shows up. Press the right digit → celebration. Wrong digit → soft "try again" sound.
 - **Touch / click** — works the same as keys (random letter on tap).
 - **Counter** — total key smashes, bottom-right corner.
+- **Theme picker (top-right)** — the child taps the round character button and picks a theme from big picture tiles; 🎲 *Surpresa* goes back to auto rotation. Typing a theme's name (`MASHA`, `PANDA`, `MAR`, `ESPAÇO`…) switches to it too. A pick stays until the next pick.
 
 ## Parent gate
 
@@ -18,7 +19,8 @@ Hold the **top-left corner for 3 seconds** to open settings. (Or: `Ctrl+Alt+S` s
 
 Settings:
 - Language: English / Português
-- Theme: Rainbow, Space, Ocean, Jungle
+- Theme: Auto, Rainbow, Space, Ocean, Jungle, Baby, and the kids'-show themes; how often Auto changes
+- Child can pick the theme (hides the top-right button and ignores typed names when off)
 - Sound / Voice / Show quests / Reduce motion toggles
 - Word difficulty: 1–3
 - Math difficulty: 0 (1+1) → 4 (×, ÷)

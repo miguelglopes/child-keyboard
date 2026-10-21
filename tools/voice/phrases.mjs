@@ -10,8 +10,8 @@ import vm from 'node:vm';
 const src = readFileSync(new URL('../../app.js', import.meta.url), 'utf8');
 const end = src.indexOf('const WORD_MAX_LEVEL');
 if (end < 0) throw new Error('app.js layout changed: WORD_MAX_LEVEL not found');
-const { LETTERS, THEME_CONTENT, WORDS, PHRASES } = vm.runInNewContext(
-  src.slice(0, end) + ';({ LETTERS, THEME_CONTENT, WORDS, PHRASES })',
+const { LETTERS, THEME_CONTENT, WORDS, PHRASES, THEME_NAMES } = vm.runInNewContext(
+  src.slice(0, end) + ';({ LETTERS, THEME_CONTENT, WORDS, PHRASES, THEME_NAMES })',
   { window: {}, navigator: { userAgent: '', maxTouchPoints: 0 } },
 );
 const testVoice = src.match(/const t = settings\.lang === 'pt' \? '([^']+)' : '((?:[^'\\]|\\.)+)'/);
@@ -62,6 +62,7 @@ for (const lang of ['pt', 'en']) {
   for (const w of Object.values(WORDS[lang]).flat()) add(w, normalCase(w, lang));
   for (let d = 0; d <= 9; d++) add(String(d), String(d)); // digit keys and math answers
   add(PHRASES[lang].level_up, PHRASES[lang].level_up);
+  for (const name of Object.values(THEME_NAMES[lang])) add(name, name); // child theme picker
   const test = lang === 'pt' ? testVoice[1] : testVoice[2].replace(/\\(.)/g, '$1');
   add(test, test);
   out[lang] = [...seen.values()];

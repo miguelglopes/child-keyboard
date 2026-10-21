@@ -14,7 +14,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=47" />
+  <link rel="stylesheet" href="styles.css?v=49" />
 </head>
 <body class="theme-rainbow" tabindex="0">
 
@@ -57,6 +57,10 @@
     <span class="corner-hint" data-i18n="hold_hint"></span>
   </button>
 
+  <button id="theme-btn" aria-label="Theme"></button>
+  <div id="theme-picker"></div>
+  <div id="theme-toast" aria-hidden="true"></div>
+
   <dialog id="settings">
     <form method="dialog" id="settings-form">
       <h2 data-i18n="settings"></h2>
@@ -98,6 +102,11 @@
           <option value="15">15 min</option>
           <option value="30">30 min</option>
         </select>
+      </label>
+
+      <label class="toggle">
+        <span data-i18n="child_themes"></span>
+        <input type="checkbox" id="set-child-themes" />
       </label>
 
       <label class="toggle">
@@ -198,6 +207,6 @@
 
   <div id="confetti" aria-hidden="true"></div>
 
-  <script src="app.js?v=47"></script>
+  <script src="app.js?v=49"></script>
 </body>
 </html>
