@@ -1153,8 +1153,17 @@ function makeTappable(el, key) {
 
 // ─── WORD QUEST ─────────────────────────────────────────────────────────────
 
-function newWord() {
+// characters: prefer the theme's character pictures (used right after a theme
+// change, so the new show is on screen at once). Themes without any keep the
+// full pool.
+function themedPool(characters) {
   const pool = buildEmojiWords(settings.lang);
+  const chars = characters ? pool.filter(w => isImageIcon(w.emoji)) : [];
+  return chars.length ? chars : pool;
+}
+
+function newWord({ characters = false } = {}) {
+  const pool = themedPool(characters);
   let pick;
   do { pick = pool[Math.floor(Math.random() * pool.length)]; }
   while (pick.word === state.word && pool.length > 1);
@@ -1272,8 +1281,8 @@ function tryWordLetter(letter) {
       paceBump();
       if (state.wordEmoji) renderWord();
       maybeLevelUpWord();
-      // ~35% chance to trigger a bonus picture quest after a win
-      if (Math.random() < 0.35) setTimeout(startBonus, 2200);
+      // ~60% chance to trigger a bonus picture quest after a win
+      if (Math.random() < 0.6) setTimeout(startBonus, 2200);
       setTimeout(newWord, 1800);
     } else {
       renderWord();
@@ -1287,9 +1296,9 @@ function tryWordLetter(letter) {
 
 const BONUS_DURATION_MS = 30000;
 
-function startBonus() {
+function startBonus({ characters = false } = {}) {
   if (state.bonus) return;
-  const pool = buildEmojiWords(settings.lang);
+  const pool = themedPool(characters);
   const pick = pool[Math.floor(Math.random() * pool.length)];
   state.bonus = {
     word: pick.word.toUpperCase(),
@@ -1656,7 +1665,8 @@ parentCorner.addEventListener('pointercancel', cancelHold);
 // ─── SETTINGS ───────────────────────────────────────────────────────────────
 
 // The word and bonus quests draw from the theme's words, so a new theme deals
-// new ones — otherwise URSO would linger on into the Panda theme.
+// new ones straight away, even mid-word — with a character, so the new show
+// is on screen at once.
 let appliedTheme = null;
 function applyTheme() {
   if (settings.theme !== 'auto') currentTheme = settings.theme;
@@ -1672,8 +1682,8 @@ function applyTheme() {
   preloadThemeIcons();
   renderThemeButton();
   if (themeChanged) {
-    newWord();
-    if (state.bonus) { closeBonus(); startBonus(); }
+    newWord({ characters: true });
+    if (state.bonus) { closeBonus(); startBonus({ characters: true }); }
   }
 }
 
