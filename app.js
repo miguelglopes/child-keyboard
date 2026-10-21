@@ -495,6 +495,7 @@ const PHRASES = {
     praise: ['Yay!', 'Awesome!', 'Wow!', 'Great!', 'Amazing!', 'Yes!'],
     tryAgain: ['Try again!', 'Almost!'],
     settings: 'Settings', language: 'Language', theme: 'Theme',
+    theme_interval: 'Change theme every (Auto)',
     sound: 'Sound', voice: 'Voice', show_quests: 'Show quests',
     falling_letters: 'Falling letters', reduce_motion: 'Reduce motion',
     reduce_effects: 'Reduce effects',
@@ -515,6 +516,7 @@ const PHRASES = {
     praise: ['Boa!', 'Excelente!', 'Uau!', 'Fantástico!', 'Sim!', 'Boa!'],
     tryAgain: ['Quase!', 'Tenta!'],
     settings: 'Definições', language: 'Idioma', theme: 'Tema',
+    theme_interval: 'Mudar tema a cada (Auto)',
     sound: 'Som', voice: 'Voz', show_quests: 'Mostrar desafios',
     falling_letters: 'Letras que caem', reduce_motion: 'Reduzir movimento',
     reduce_effects: 'Reduzir efeitos',
@@ -537,6 +539,7 @@ const PHRASES = {
 const DEFAULTS = {
   lang: 'pt',
   theme: 'auto',
+  themeIntervalMin: 2, // auto mode: minutes between theme changes
   sound: true,
   voice: true,
   quests: true,
@@ -1656,17 +1659,16 @@ function nextAutoTheme() {
   }
   return themeDeck.pop();
 }
-// Switch at most every 2 minutes, and only while the child is playing: the
-// first key after the cooldown deals the next theme. Keys that advance a
-// word quest or answer the sum don't count, so the scene never changes
-// mid-answer.
-const THEME_SWITCH_COOLDOWN_MS = 120000; // 2 min
+// Switch every settings.themeIntervalMin minutes, and only while the child is
+// playing: the first key after the interval deals the next theme. Keys that
+// advance a word quest or answer the sum don't count, so the scene never
+// changes mid-answer.
 let lastThemeSwitchAt = 0;
 
 function maybeSwitchTheme(wasQuestProgress) {
   if (settings.theme !== 'auto') return;
   if (wasQuestProgress) return;
-  if (performance.now() - lastThemeSwitchAt < THEME_SWITCH_COOLDOWN_MS) return;
+  if (performance.now() - lastThemeSwitchAt < settings.themeIntervalMin * 60000) return;
 
   currentTheme = nextAutoTheme();
   applyTheme();
@@ -1859,6 +1861,7 @@ function renderStatsTable() {
 function openSettings() {
   document.getElementById('set-lang').value = settings.lang;
   document.getElementById('set-theme').value = settings.theme;
+  document.getElementById('set-theme-interval').value = String(settings.themeIntervalMin);
   document.getElementById('set-sound').checked = settings.sound;
   document.getElementById('set-voice').checked = settings.voice;
   document.getElementById('set-quests').checked = settings.quests;
@@ -1883,6 +1886,7 @@ document.getElementById('settings-form').addEventListener('change', (e) => {
   const prevLang = settings.lang;
   settings.lang = document.getElementById('set-lang').value;
   settings.theme = document.getElementById('set-theme').value;
+  settings.themeIntervalMin = parseInt(document.getElementById('set-theme-interval').value, 10);
   settings.sound = document.getElementById('set-sound').checked;
   settings.voice = document.getElementById('set-voice').checked;
   settings.quests = document.getElementById('set-quests').checked;
