@@ -11,14 +11,19 @@
 #   - ./webos/build.sh has been run (or pass --build to rebuild)
 #   - ~/.ssh/lgtv_dev is an unencrypted copy of the dev key (see IPTV repo's
 #     scripts/setup-key for how it's derived from ~/.webos/ose/novacom-devices.json)
+#
+# A sleeping TV is woken with a Wake-on-LAN packet to TV_MAC (needs the TV's
+# "Turn on via Wi-Fi" setting); its dev SSH answers ~30s later.
 
 set -euo pipefail
 
-: "${TV_HOST:=192.163.2.153}"
+: "${TV_HOST:=192.168.1.80}"
 : "${TV_PORT:=9922}"
 : "${TV_USER:=prisoner}"
 : "${TV_KEY:=$HOME/.ssh/lgtv_dev}"
 : "${APP_ID:=com.mgl.funkeyboard}"
+: "${TV_MAC:=d4:8d:26:cf:53:a6}"
+: "${WOL_BROADCAST:=192.168.1.255}"
 
 WEBOS_DIR="$(cd "$(dirname "$0")" && pwd)"
 TV_TMP="/media/developer/temp"
@@ -47,6 +52,23 @@ SSH_OPTS=(
   -o LogLevel=ERROR
   -i "$TV_KEY"
 )
+
+tv_up() { timeout 3 bash -c "</dev/tcp/$TV_HOST/$TV_PORT" 2>/dev/null; }
+
+if ! tv_up; then
+  echo "→ TV not answering, sending Wake-on-LAN to $TV_MAC"
+  python3 -I - "$TV_MAC" "$WOL_BROADCAST" <<'PY'
+import socket, sys
+packet = b'\xff' * 6 + bytes.fromhex(sys.argv[1].replace(':', '')) * 16
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+for _ in range(3):
+    s.sendto(packet, (sys.argv[2], 9))
+PY
+  for _ in $(seq 1 40); do tv_up && break; sleep 3; done
+  tv_up || { echo "error: TV still not answering on $TV_HOST:$TV_PORT — is it on, with Developer Mode enabled?" >&2; exit 1; }
+  echo "✓ TV awake"
+fi
 
 IPK_NAME=$(basename "$IPK")
 REMOTE_IPK="$TV_TMP/$IPK_NAME"

@@ -46,7 +46,7 @@ Re-run both after adding or changing letters, words or spoken phrases. Letter na
 ./webos/install.sh --build  # rebuild .ipk first, then install
 ```
 
-Default TV: `192.163.2.153` (override with `TV_HOST=…`). App id: `com.mgl.funkeyboard`. The TV must already be registered with `ares-setup-device` so `~/.webos/ose/novacom-devices.json` has its passphrase + key reference.
+Default TV: `192.168.1.80` (override with `TV_HOST=…`). If it's asleep, `install.sh` wakes it with Wake-on-LAN (`TV_MAC`, default `d4:8d:26:cf:53:a6`) and waits for dev SSH. App id: `com.mgl.funkeyboard`. The TV must already be registered with `ares-setup-device` so `~/.webos/ose/novacom-devices.json` has its passphrase + key reference.
 
 ### Why `install.sh` instead of `ares-install`
 
@@ -65,10 +65,10 @@ The dev TV runs ancient OpenSSH 6.1 — only offers `ssh-rsa` host keys and SHA-
 ssh -p 9922 -i ~/.ssh/lgtv_dev \
   -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa \
   -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  prisoner@192.163.2.153 "tail -f /var/log/messages"
+  prisoner@192.168.1.80 "tail -f /var/log/messages"
 
 # Close the app
-ssh ... prisoner@192.163.2.153 \
+ssh ... prisoner@192.168.1.80 \
   "/usr/bin/luna-send-pub -n 1 'luna://com.webos.applicationManager/dev/closeByAppId' '{\"id\":\"com.mgl.funkeyboard\"}'"
 ```
 
