@@ -1504,7 +1504,6 @@ function updateLevelLabels() {
 
 function handleKey(rawKey) {
   if (settingsDialog.open) return;
-  if (themePicker.classList.contains('open')) closeThemePicker();
 
   setCount(state.keyCount + 1);
   record('Keys');
