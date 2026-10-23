@@ -1609,6 +1609,7 @@ let lastTrailAt = 0;
 window.addEventListener('pointermove', (e) => {
   if (settings.reduceEffects) return;
   if (settingsDialog.open) return;
+  if (inkPointers.has(e.pointerId)) return; // pressed: ink draws the line instead
   const now = performance.now();
   if (now - lastTrailAt < 25) return;
   lastTrailAt = now;
@@ -1624,7 +1625,7 @@ window.addEventListener('pointermove', (e) => {
 // Pointer/touch on stage = random key, spawned at the pointer's location
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return; // left button only (touch and pen report 0)
-  if (e.target.closest('button, dialog, label, select, input, [data-key], #theme-picker')) return;
+  if (e.target.closest('button, dialog, label, select, input, [data-key], #theme-picker, .ink-face')) return;
   spawnOriginOverride = {
     x: (e.clientX / window.innerWidth) * 100,
     y: (e.clientY / window.innerHeight) * 100,
@@ -1646,6 +1647,359 @@ window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, 
 for (const type of ['gesturestart', 'gesturechange']) {
   window.addEventListener(type, (e) => e.preventDefault());
 }
+
+// ─── INK ────────────────────────────────────────────────────────────────────
+// Drag to paint. Taps stay exactly as above (letter at the finger); once a
+// pressed pointer has moved 8px it also leaves ink and plays notes that climb
+// as it goes up. A closed loop comes alive: a face, a bounce, and it sings
+// back the tune it was drawn with, in the rhythm it was drawn; tap the face to
+// hear it again. The picture fades together 10s after the last stroke. Points,
+// notes and songs are all capped so the TV keeps up.
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const inkLayer = document.getElementById('ink');
+// C4..C6 of the keyboard's C-major scale, low → high. Top of the screen plays
+// the highest note.
+const INK_NOTES = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88,
+  523.25, 587.33, 659.25, 698.46, 783.99, 880.00, 987.77, 1046.50];
+const INK_START_PX = 8;        // movement before a press becomes a stroke
+const INK_NOTE_PX = 32;        // travel between notes
+const INK_SEG_POINTS = 40;     // points per <path>, bounds the d re-parse
+const INK_STROKE_MAX = 600;    // a stroke freezes here (geometry and notes)
+const INK_MAX_LIVE = 3;        // fingers drawing at once
+const INK_IDLE_MS = 10000;     // picture fades this long after the last activity
+const INK_RAIN_QUIET_MS = 400; // ink stays silent after a bubble pops
+const INK_SONG_NOTES = 8;
+const inkLimits = () => settings.reduceEffects
+  ? { spacing: 6, budget: 1500, noteGap: 160 }
+  : { spacing: 4, budget: 5000, noteGap: 110 };
+
+const inkPointers = new Map(); // pointerId → candidate or live stroke
+let inkStrokes = [];           // finished + live strokes, oldest first
+let inkPointCount = 0;
+let inkLastNoteAt = 0;
+let inkLastBubblePopAt = 0;
+let inkFrame = 0;
+let inkIdleTimer = null;
+let inkClearTimer = null;
+let inkSong = null;            // { face, timers } — one song at a time, waiting or playing
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+function inkVmin() { return Math.min(window.innerWidth, window.innerHeight) / 100; }
+
+function inkNoteAt(y) {
+  const i = Math.round((1 - y / window.innerHeight) * (INK_NOTES.length - 1));
+  return INK_NOTES[Math.max(0, Math.min(INK_NOTES.length - 1, i))];
+}
+
+// Smooth curve through the points: quadratic segments between midpoints.
+function inkPathD(pts, close = false) {
+  if (pts.length === 1) return `M${pts[0][0]} ${pts[0][1]}l0.01 0`;
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [x, y] = pts[i], [nx, ny] = pts[i + 1];
+    d += `Q${x} ${y} ${(x + nx) / 2} ${(y + ny) / 2}`;
+  }
+  const last = pts[pts.length - 1];
+  return d + `L${last[0]} ${last[1]}` + (close ? 'Z' : '');
+}
+
+// Colours are resolved now and baked on the stroke, so a theme change later
+// doesn't repaint what's already drawn.
+function inkStartStroke(c) {
+  const css = getComputedStyle(document.body);
+  const width = Math.max(12, Math.min(28, 2.2 * inkVmin())) * (parseFloat(css.getPropertyValue('--ink-w')) || 1);
+  const g = svgEl('g', { class: 'ink-stroke' });
+  const glow = svgEl('g', { class: 'ink-glow', stroke: css.getPropertyValue('--ink-2').trim(), 'stroke-width': width * 1.9 });
+  const core = svgEl('g', { class: 'ink-core', 'stroke-width': width });
+  g.append(glow, core);
+  inkLayer.appendChild(g);
+  const s = {
+    live: true, g, glow, core, width,
+    color: css.getPropertyValue('--ink-1').trim(),
+    rainbow: effectiveTheme() === 'rainbow',
+    pts: [[c.x0, c.y0]], pending: [], segStart: 0, seg: null,
+    travel: 0, notes: [],
+  };
+  inkStrokes.push(s);
+  inkPointCount++;
+  inkRevive();
+  return s;
+}
+
+function inkNewSegment(s) {
+  const color = s.rainbow ? TRAIL_COLORS[(s.segStart / INK_SEG_POINTS) % TRAIL_COLORS.length | 0] : s.color;
+  s.seg = { glow: svgEl('path', {}), core: svgEl('path', { stroke: color }) };
+  s.glow.appendChild(s.seg.glow);
+  s.core.appendChild(s.seg.core);
+}
+
+// Pointer events only collect points and add up travel; drawing and notes
+// happen once per frame, after every pointermove handler (rain's included)
+// has run, so a bubble popped by the same move silences the note.
+function inkFlush() {
+  inkFrame = 0;
+  for (const s of inkPointers.values()) if (s.live) inkFlushStroke(s, true);
+}
+
+function inkFlushStroke(s, withNotes) {
+  if (s.pending.length) {
+    for (const p of s.pending) {
+      // Full stroke, or the budget is spent on strokes still being drawn:
+      // this one stops growing (and singing).
+      if (s.pts.length >= INK_STROKE_MAX || !inkRoomForPoint()) { s.frozen = true; break; }
+      s.pts.push(p);
+      inkPointCount++;
+    }
+    s.pending = [];
+    // Each <path> holds INK_SEG_POINTS points; the next starts at the last
+    // point of the previous so the line stays joined.
+    while (true) {
+      if (!s.seg) inkNewSegment(s);
+      const end = Math.min(s.pts.length, s.segStart + INK_SEG_POINTS + 1);
+      const d = inkPathD(s.pts.slice(s.segStart, end));
+      s.seg.glow.setAttribute('d', d);
+      s.seg.core.setAttribute('d', d);
+      if (s.pts.length <= s.segStart + INK_SEG_POINTS + 1) break;
+      s.segStart += INK_SEG_POINTS;
+      s.seg = null;
+    }
+  }
+  if (!withNotes || s.travel < INK_NOTE_PX || s.frozen) return;
+  const now = performance.now();
+  if (now - inkLastNoteAt < inkLimits().noteGap) return;
+  if (now - inkLastBubblePopAt < INK_RAIN_QUIET_MS) return;
+  const freq = inkNoteAt(s.pts[s.pts.length - 1][1]);
+  themeSynth()(freq);
+  inkLastNoteAt = now;
+  s.travel = 0;
+  s.notes.push([freq, now]);
+  if (s.notes.length > INK_SONG_NOTES) s.notes.shift();
+}
+
+// Over the point budget the oldest finished stroke fades out early to make
+// room. False when only strokes still being drawn are left.
+function inkRoomForPoint() {
+  // A loop, not one eviction: switching on reduceEffects shrinks the budget
+  // under a picture that's already there.
+  while (inkPointCount >= inkLimits().budget) {
+    const old = inkStrokes.find(s => !s.live);
+    if (!old) return false;
+    inkRemoveStroke(old, true);
+  }
+  return true;
+}
+
+function inkRemoveStroke(s, fade) {
+  inkStrokes = inkStrokes.filter(x => x !== s);
+  inkPointCount -= s.pts.length;
+  if (inkSong && inkSong.face === s.face) inkStopSong();
+  if (!fade) { s.g.remove(); return; }
+  s.g.classList.add('ink-gone');
+  setTimeout(() => s.g.remove(), settings.reduceMotion ? 400 : 1200);
+}
+
+function inkEnd(id, complete) {
+  const s = inkPointers.get(id);
+  if (!s) return;
+  inkPointers.delete(id);
+  if (!s.live) return; // never moved far enough: it was a tap
+  inkFlushStroke(s, complete);
+  s.live = false;
+  if (complete && inkIsLoop(s.pts)) inkMakeCreature(s);
+  inkScheduleIdle();
+}
+
+function inkCancelAll() {
+  for (const id of [...inkPointers.keys()]) inkEnd(id, false);
+  inkStopSong();
+}
+
+// A loop: big enough, ends meet, and it encloses space. Playful rather than a
+// shape classifier — a round-and-round toddler scribble growing a face is
+// a feature. Circle ≈ 0.79 on both ratios, square 1.0.
+function inkIsLoop(pts) {
+  if (pts.length < 8) return false;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, len = 0, area = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x, y] = pts[i];
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    const [nx, ny] = pts[(i + 1) % pts.length];
+    area += x * ny - nx * y;
+    if (i > 0) len += Math.hypot(x - pts[i - 1][0], y - pts[i - 1][1]);
+  }
+  const w = maxX - minX, h = maxY - minY, small = Math.min(w, h);
+  const [sx, sy] = pts[0], [ex, ey] = pts[pts.length - 1];
+  return small >= Math.max(10 * inkVmin(), 60)
+    && Math.hypot(ex - sx, ey - sy) <= Math.max(24, 0.25 * small)
+    && Math.abs(area) / 2 >= 0.35 * w * h
+    && len <= 2.5 * 2 * (w + h);
+}
+
+function inkMakeCreature(s) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of s.pts) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const vmin = inkVmin();
+  const r = Math.max(8 * vmin, Math.min(18 * vmin, 0.45 * Math.min(maxX - minX, maxY - minY))) / 2;
+  s.g.classList.add('ink-creature');
+  s.g.insertBefore(svgEl('path', { class: 'ink-fill', d: inkPathD(s.pts, true), fill: s.color }), s.g.firstChild);
+
+  // Googly eyes with a soft shadow under them (the spawn cards' look), a
+  // smile, and an open mouth shown while it sings. The transparent circle is
+  // the only part of the creature that takes a tap.
+  const face = svgEl('g', { class: 'ink-face', transform: `translate(${cx} ${cy})` });
+  const look = (Math.random() - 0.5) * 0.12 * r;
+  face.append(svgEl('circle', { class: 'ink-hit', r }));
+  for (const side of [-1, 1]) {
+    const ex = side * 0.38 * r, ey = -0.18 * r;
+    face.append(
+      svgEl('circle', { class: 'ink-eye-shadow', cx: ex, cy: ey + 0.06 * r, r: 0.27 * r }),
+      svgEl('circle', { class: 'ink-eye', cx: ex, cy: ey, r: 0.25 * r }),
+      svgEl('circle', { class: 'ink-pupil', cx: ex + look, cy: ey + 0.05 * r, r: 0.12 * r }),
+    );
+  }
+  face.append(
+    svgEl('path', { class: 'ink-smile', d: `M${-0.38 * r} ${0.28 * r}Q0 ${0.68 * r} ${0.38 * r} ${0.28 * r}`, 'stroke-width': Math.max(3, 0.09 * r) }),
+    svgEl('ellipse', { class: 'ink-mouth', cx: 0, cy: 0.42 * r, rx: 0.2 * r, ry: 0.16 * r }),
+  );
+  s.g.appendChild(face);
+  s.face = face;
+  s.song = inkSongFor(s);
+  face.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !inkStrokes.includes(s)) return; // fading out early
+    inkRevive();
+    inkSing(s);
+    inkScheduleIdle();
+  });
+  inkSingWhenQuiet(s);
+}
+
+// A new creature sings once the rain-quiet window is over, so its song doesn't
+// land on the bubble melody. The wait counts as its song: anything that stops
+// songs (a face tap, settings, the stroke going) cancels it too.
+function inkSingWhenQuiet(s) {
+  const wait = INK_RAIN_QUIET_MS - (performance.now() - inkLastBubblePopAt);
+  if (wait <= 0) { inkSing(s); return; }
+  inkStopSong();
+  inkSong = { face: s.face, timers: [setTimeout(() => inkSingWhenQuiet(s), wait)] };
+}
+
+// The recorded notes with their own gaps (clamped), or — when the loop was
+// drawn too small, too fast or through bubbles to record a tune — notes read
+// off the shape itself.
+function inkSongFor(s) {
+  if (s.notes.length >= 3) {
+    return s.notes.map(([freq, t], i) => [freq, i ? Math.max(120, Math.min(400, t - s.notes[i - 1][1])) : 0]);
+  }
+  const out = [];
+  for (let i = 0; i < 6; i++) {
+    const p = s.pts[Math.floor(i * (s.pts.length - 1) / 5)];
+    out.push([inkNoteAt(p[1]), i ? 150 : 0]);
+  }
+  return out;
+}
+
+function inkSing(s) {
+  inkStopSong();
+  const face = s.face;
+  s.g.classList.remove('bounce');
+  s.g.getBoundingClientRect(); // reflow, so the bounce restarts
+  s.g.classList.add('bounce');
+  const timers = [];
+  let at = 0;
+  for (const [freq, gap] of s.song) {
+    at += gap;
+    timers.push(setTimeout(() => {
+      themeSynth()(freq);
+      face.classList.add('sing');
+      timers.push(setTimeout(() => face.classList.remove('sing'), 110));
+    }, at));
+  }
+  inkSong = { face, timers };
+}
+
+function inkStopSong() {
+  if (!inkSong) return;
+  for (const t of inkSong.timers) clearTimeout(t);
+  inkSong.face.classList.remove('sing');
+  inkSong = null;
+}
+
+// The whole picture fades together once nobody has drawn or tapped a face for
+// INK_IDLE_MS; drawing again or tapping a face during the fade brings it back.
+function inkScheduleIdle() {
+  clearTimeout(inkIdleTimer);
+  if ([...inkPointers.values()].some(s => s.live)) return;
+  inkIdleTimer = setTimeout(() => {
+    inkLayer.classList.add('fading');
+    inkClearTimer = setTimeout(() => {
+      inkStopSong();
+      for (const s of [...inkStrokes]) if (!s.live) inkRemoveStroke(s, false);
+      inkLayer.classList.remove('fading');
+    }, settings.reduceMotion ? 400 : 1200);
+  }, INK_IDLE_MS);
+}
+
+function inkRevive() {
+  clearTimeout(inkIdleTimer);
+  clearTimeout(inkClearTimer);
+  inkLayer.classList.remove('fading');
+}
+
+window.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  if (settingsDialog.open || themePicker.classList.contains('open')) return;
+  if (e.target.closest('button:not(.rain-bubble), dialog, label, select, input, [data-key]:not(.rain-bubble), #theme-picker')) return;
+  inkEnd(e.pointerId, true);
+  inkPointers.set(e.pointerId, { live: false, x0: e.clientX, y0: e.clientY });
+});
+
+window.addEventListener('pointermove', (e) => {
+  const s = inkPointers.get(e.pointerId);
+  if (!s) return;
+  // A mouse released outside the window never sends us its pointerup.
+  if (e.buttons === 0) { inkEnd(e.pointerId, true); return; }
+  if (settingsDialog.open || themePicker.classList.contains('open')) return;
+  const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  const events = coalesced.length ? coalesced : [e];
+  let st = s;
+  if (!st.live) {
+    if (!events.some(ev => Math.hypot(ev.clientX - s.x0, ev.clientY - s.y0) > INK_START_PX)) return;
+    // No free finger slot or no room: start from here later, not from the
+    // old touchdown (that would draw a straight line across the screen).
+    if ([...inkPointers.values()].filter(x => x.live).length >= INK_MAX_LIVE || !inkRoomForPoint()) {
+      s.x0 = e.clientX; s.y0 = e.clientY;
+      return;
+    }
+    st = inkStartStroke(s);
+    inkPointers.set(e.pointerId, st);
+  }
+  if (st.frozen || st.pts.length + st.pending.length >= INK_STROKE_MAX) return;
+  const spacing = inkLimits().spacing;
+  for (const ev of events) {
+    const last = st.pending.length ? st.pending[st.pending.length - 1] : st.pts[st.pts.length - 1];
+    const dist = Math.hypot(ev.clientX - last[0], ev.clientY - last[1]);
+    if (dist < spacing) continue;
+    st.pending.push([ev.clientX, ev.clientY]);
+    st.travel += dist;
+  }
+  if (!inkFrame) inkFrame = requestAnimationFrame(inkFlush);
+});
+
+window.addEventListener('pointerup', (e) => inkEnd(e.pointerId, true));
+window.addEventListener('pointercancel', (e) => inkEnd(e.pointerId, false));
+window.addEventListener('blur', inkCancelAll);
+document.addEventListener('visibilitychange', () => { if (document.hidden) inkCancelAll(); });
 
 // ─── PARENT GATE ────────────────────────────────────────────────────────────
 // 3-second hold of the top-left corner opens settings. That's the whole gate —
@@ -1745,6 +2099,7 @@ function renderThemeButton() {
 
 let pickerTimer = null;
 function openThemePicker() {
+  inkCancelAll();
   const names = THEME_NAMES[settings.lang];
   themePicker.innerHTML = '<div class="theme-grid">' + PICKER_TILES.map(([theme, art]) =>
     `<button type="button" class="theme-tile${theme === effectiveTheme() ? ' current' : ''}" data-theme="${theme}">` +
@@ -1992,6 +2347,7 @@ function renderStatsTable() {
 }
 
 function openSettings() {
+  inkCancelAll();
   document.getElementById('set-lang').value = settings.lang;
   document.getElementById('set-theme').value = settings.theme;
   document.getElementById('set-theme-interval').value = String(settings.themeIntervalMin);
@@ -2674,6 +3030,9 @@ function popBubble(bubble) {
 
 function onRainTap(bubble, key) {
   if (bubble.classList.contains('pop')) return;
+  // Bubbles carry the song while a swipe sweeps through them: hush the ink.
+  inkLastBubblePopAt = performance.now();
+  for (const s of inkPointers.values()) if (s.live) s.travel = 0;
   popBubble(bubble);
   window.dispatchEvent(new KeyboardEvent('keydown', { key }));
 }

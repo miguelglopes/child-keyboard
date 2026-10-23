@@ -11,6 +11,15 @@
   --motion: 1;
 }
 
+/* Ink (drag to paint): core colour, glow colour, width multiplier. Set on
+   body, not :root, so var(--accent) resolves to the theme's own accent
+   (the theme classes sit on body). */
+body {
+  --ink-1: var(--accent);
+  --ink-2: #ffffff;
+  --ink-w: 1;
+}
+
 .theme-rainbow {
   --bg-1: #1a1230;
   --bg-2: #2a1a4a;
@@ -19,16 +28,21 @@
   --bg-1: #050818;
   --bg-2: #1a1a4a;
   --accent: #b6e5ff;
+  --ink-2: #b6e5ff;
 }
 .theme-ocean {
   --bg-1: #013a63;
   --bg-2: #0077b6;
   --accent: #ffd166;
+  --ink-1: #5ee6ff;
+  --ink-2: #b6f0ff;
 }
 .theme-jungle {
   --bg-1: #1b4332;
   --bg-2: #2d6a4f;
   --accent: #ffe066;
+  --ink-1: #8ac926;
+  --ink-2: #ffe066;
 }
 .theme-paw {
   --bg-1: #0b2a5b;
@@ -44,6 +58,7 @@
   --bg-1: #2b1b4f;
   --bg-2: #6a3fa0;
   --accent: #ffc6ff;
+  --ink-2: #ff7eb9;
 }
 .theme-panda {
   --bg-1: #1f2a1f;
@@ -54,6 +69,7 @@
   --bg-1: #2a0a0a;
   --bg-2: #6b0f1a;
   --accent: #ffd60a;
+  --ink-2: #ff3b3b;
 }
 .theme-baby {
   --bg-1: #000;
@@ -64,6 +80,9 @@
   --accent-4: #ffffff;
   --quest-fg: rgba(255, 255, 255, 0.6);
   --quest-active: #ff1f1f;
+  --ink-1: #ffffff;
+  --ink-2: #ff1f1f;
+  --ink-w: 1.6;
 }
 
 * { box-sizing: border-box; }
@@ -549,7 +568,57 @@ body.reduce-motion .leaf,
 body.reduce-motion .sun-beam,
 body.reduce-motion .sparkle { animation: none; opacity: 0.3; }
 
-/* contain: strict on the full-viewport effect layers (#stage, #rain,
+/* Ink sits just above the background: letter cards, quests and rain all
+   stay on top of a drawing. Only creature faces take taps (.ink-hit). The
+   whole picture fades by transition, so a face tap can bring it back. */
+#ink {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 3;
+  contain: strict;
+  transition: opacity 1.2s ease;
+}
+#ink.fading { opacity: 0; }
+.ink-stroke { transition: opacity 1.2s ease; }
+.ink-stroke.ink-gone { opacity: 0; }
+.ink-gone .ink-hit { pointer-events: none; }
+.ink-glow path,
+.ink-core path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ink-glow { opacity: 0.3; }
+.theme-baby .ink-glow { opacity: 0.6; }
+.ink-fill { opacity: 0.3; }
+.ink-creature {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ink-creature.bounce { animation: ink-bounce 650ms cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes ink-bounce {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.1, 0.9); }
+  60%  { transform: scale(0.95, 1.06); }
+  100% { transform: scale(1); }
+}
+.ink-hit { fill: transparent; pointer-events: visiblePainted; }
+.ink-eye { fill: #fff; }
+.ink-eye-shadow { fill: rgba(0, 0, 0, 0.35); }
+.ink-pupil { fill: #1a1230; }
+.ink-smile { fill: none; stroke: #1a1230; stroke-linecap: round; }
+.ink-mouth { fill: #1a1230; display: none; }
+.ink-face.sing .ink-smile { display: none; }
+.ink-face.sing .ink-mouth { display: inline; }
+body.reduce-motion #ink,
+body.reduce-motion .ink-stroke { transition-duration: 0.4s; }
+body.reduce-motion .ink-creature.bounce { animation: none; }
+
+/* contain: strict on the full-viewport effect layers (#stage, #rain, #ink,
    #confetti, #bg-particles) keeps the style/layout work from inserting and
    removing spawns, bubbles and confetti scoped to that container. */
 #stage {
