@@ -7,7 +7,8 @@ const isWebOS = !!window.PalmSystem || /web0s|webos/i.test(navigator.userAgent);
 const isTouchCapable = 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
 // Rain bubbles are only useful where the kid can swipe through them — touch
 // screens and TVs (Magic Remote cursor). On a desktop browser they're just
-// noise during keyboard play, so suppress them there.
+// noise during keyboard play, so the default 'touch' setting suppresses them
+// there; 'always' lets an adult turn them on anyway.
 const rainAllowed = isTouchCapable || isWebOS;
 
 // ─── UTILS ──────────────────────────────────────────────────────────────────
@@ -497,7 +498,8 @@ const PHRASES = {
     settings: 'Settings', language: 'Language', theme: 'Theme',
     theme_interval: 'Change theme every (Auto)',
     sound: 'Sound', voice: 'Voice', show_quests: 'Show quests',
-    falling_letters: 'Falling letters', reduce_motion: 'Reduce motion',
+    falling_letters: 'Falling letters', falling_off: 'Off', falling_touch: 'Touch screens only',
+    falling_always: 'Always', reduce_motion: 'Reduce motion',
     reduce_effects: 'Reduce effects',
     word_difficulty: 'Word difficulty', math_difficulty: 'Math difficulty',
     fullscreen: 'Fullscreen', reset_counter: 'Reset counter', reset_levels: 'Reset levels', close: 'Close',
@@ -519,7 +521,8 @@ const PHRASES = {
     settings: 'Definições', language: 'Idioma', theme: 'Tema',
     theme_interval: 'Mudar tema a cada (Auto)',
     sound: 'Som', voice: 'Voz', show_quests: 'Mostrar desafios',
-    falling_letters: 'Letras que caem', reduce_motion: 'Reduzir movimento',
+    falling_letters: 'Letras que caem', falling_off: 'Desligadas', falling_touch: 'Só ecrãs táteis',
+    falling_always: 'Sempre', reduce_motion: 'Reduzir movimento',
     reduce_effects: 'Reduzir efeitos',
     word_difficulty: 'Dificuldade palavras', math_difficulty: 'Dificuldade matemática',
     fullscreen: 'Ecrã inteiro', reset_counter: 'Reiniciar contador', reset_levels: 'Reiniciar níveis', close: 'Fechar',
@@ -560,7 +563,7 @@ const DEFAULTS = {
   sound: true,
   voice: true,
   quests: true,
-  fallingLetters: true,
+  fallingLetters: 'touch', // 'off' | 'touch' (touch screens + TV) | 'always'
   reduceMotion: false,
   reduceEffects: isWebOS,
   wordDiff: 'auto',
@@ -588,7 +591,10 @@ const STREAK_TO_LEVEL_UP = 3;
 
 function loadSettings() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('ck-settings') || '{}') };
+    const saved = JSON.parse(localStorage.getItem('ck-settings') || '{}');
+    // Falling letters used to be an on/off checkbox
+    if (typeof saved.fallingLetters === 'boolean') saved.fallingLetters = saved.fallingLetters ? 'touch' : 'off';
+    return { ...DEFAULTS, ...saved };
   } catch { return { ...DEFAULTS }; }
 }
 function saveSettings() {
@@ -1993,7 +1999,7 @@ function openSettings() {
   document.getElementById('set-sound').checked = settings.sound;
   document.getElementById('set-voice').checked = settings.voice;
   document.getElementById('set-quests').checked = settings.quests;
-  document.getElementById('set-falling-letters').checked = settings.fallingLetters;
+  document.getElementById('set-falling-letters').value = settings.fallingLetters;
   document.getElementById('set-reduce-motion').checked = settings.reduceMotion;
   document.getElementById('set-reduce-effects').checked = settings.reduceEffects;
   document.getElementById('set-fullscreen').checked = !!document.fullscreenElement;
@@ -2019,7 +2025,7 @@ document.getElementById('settings-form').addEventListener('change', (e) => {
   settings.sound = document.getElementById('set-sound').checked;
   settings.voice = document.getElementById('set-voice').checked;
   settings.quests = document.getElementById('set-quests').checked;
-  settings.fallingLetters = document.getElementById('set-falling-letters').checked;
+  settings.fallingLetters = document.getElementById('set-falling-letters').value;
   settings.reduceMotion = document.getElementById('set-reduce-motion').checked;
   settings.reduceEffects = document.getElementById('set-reduce-effects').checked;
   settings.wordDiff = document.getElementById('set-word-diff').value;
@@ -2482,8 +2488,8 @@ function advanceSong() {
 }
 
 function rainActive() {
-  if (!rainAllowed) return false;
-  if (!settings.fallingLetters) return false;
+  if (settings.fallingLetters === 'off') return false;
+  if (settings.fallingLetters === 'touch' && !rainAllowed) return false;
   if (!settings.quests) return false;
   if (settingsDialog.open) return false;
   return !!(state.word || state.eq || state.bonus);
