@@ -1653,7 +1653,8 @@ for (const type of ['gesturestart', 'gesturechange']) {
 // pressed pointer has moved 8px it also leaves ink and plays notes that climb
 // as it goes up. A closed loop comes alive: a face, a bounce, and it sings
 // back the tune it was drawn with, in the rhythm it was drawn; tap the face to
-// hear it again. The picture fades together 10s after the last stroke. Points,
+// hear it again. The picture fades together 10s after the last stroke, and
+// during non-stop play each stroke goes 20s after it was drawn. Points,
 // notes and songs are all capped so the TV keeps up.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -1668,6 +1669,7 @@ const INK_SEG_POINTS = 40;     // points per <path>, bounds the d re-parse
 const INK_STROKE_MAX = 600;    // a stroke freezes here (geometry and notes)
 const INK_MAX_LIVE = 3;        // fingers drawing at once
 const INK_IDLE_MS = 10000;     // picture fades this long after the last activity
+const INK_MAX_AGE_MS = 20000;  // …and each stroke on its own this long after it's drawn
 const INK_RAIN_QUIET_MS = 400; // ink stays silent after a bubble pops
 const INK_SONG_NOTES = 8;
 const inkLimits = () => settings.reduceEffects
@@ -1724,7 +1726,7 @@ function inkStartStroke(c) {
     color: css.getPropertyValue('--ink-1').trim(),
     rainbow: effectiveTheme() === 'rainbow',
     pts: [[c.x0, c.y0]], pending: [], segStart: 0, seg: null,
-    travel: 0, notes: [],
+    travel: 0, notes: [], popped: !!c.popped,
   };
   inkStrokes.push(s);
   inkPointCount++;
@@ -1796,6 +1798,7 @@ function inkRoomForPoint() {
 }
 
 function inkRemoveStroke(s, fade) {
+  clearTimeout(s.ageTimer);
   inkStrokes = inkStrokes.filter(x => x !== s);
   inkPointCount -= s.pts.length;
   if (inkSong && inkSong.face === s.face) inkStopSong();
@@ -1811,8 +1814,31 @@ function inkEnd(id, complete) {
   if (!s.live) return; // never moved far enough: it was a tap
   inkFlushStroke(s, complete);
   s.live = false;
+  if (s.popped) { inkRemoveStroke(s, true); inkScheduleIdle(); return; }
   if (complete && inkIsLoop(s.pts)) inkMakeCreature(s);
+  inkAge(s);
   inkScheduleIdle();
+}
+
+// Non-stop drawing never lets the picture go idle, so strokes also age out one
+// by one and the screen keeps refreshing. A face tap gives its creature longer.
+function inkAge(s) {
+  clearTimeout(s.ageTimer);
+  s.ageTimer = setTimeout(() => { if (inkStrokes.includes(s)) inkRemoveStroke(s, true); }, INK_MAX_AGE_MS);
+}
+
+// Bubbles and ink share one gesture. Mouse and Magic Remote: hovering pops,
+// holding the button draws, so a pressed pointer doesn't pop. Touch has no
+// hover, so a swipe does both — and a swipe that popped a bubble was a bubble
+// swipe: its ink fades straight away instead of staying in the picture.
+function inkHoldsBubbles(e) {
+  return e.pointerType === 'mouse' && inkPointers.has(e.pointerId);
+}
+function inkBubblePopped(pointerId) {
+  inkLastBubblePopAt = performance.now();
+  for (const s of inkPointers.values()) if (s.live) s.travel = 0;
+  const s = inkPointers.get(pointerId);
+  if (s) s.popped = true;
 }
 
 function inkCancelAll() {
@@ -1879,6 +1905,7 @@ function inkMakeCreature(s) {
     if (e.button !== 0 || !inkStrokes.includes(s)) return; // fading out early
     inkRevive();
     inkSing(s);
+    inkAge(s);
     inkScheduleIdle();
   });
   inkSingWhenQuiet(s);
@@ -1915,23 +1942,27 @@ function inkSing(s) {
   s.g.classList.remove('bounce');
   s.g.getBoundingClientRect(); // reflow, so the bounce restarts
   s.g.classList.add('bounce');
+  // The mouth stays open for the whole song and pulses on each note.
+  face.classList.add('sing');
   const timers = [];
   let at = 0;
   for (const [freq, gap] of s.song) {
     at += gap;
     timers.push(setTimeout(() => {
       themeSynth()(freq);
-      face.classList.add('sing');
-      timers.push(setTimeout(() => face.classList.remove('sing'), 110));
+      face.classList.remove('note');
+      face.getBoundingClientRect(); // reflow, so the pulse restarts
+      face.classList.add('note');
     }, at));
   }
+  timers.push(setTimeout(() => face.classList.remove('sing', 'note'), at + 350));
   inkSong = { face, timers };
 }
 
 function inkStopSong() {
   if (!inkSong) return;
   for (const t of inkSong.timers) clearTimeout(t);
-  inkSong.face.classList.remove('sing');
+  inkSong.face.classList.remove('sing', 'note');
   inkSong = null;
 }
 
@@ -2968,9 +2999,10 @@ function spawnRainBubble() {
       try { b.releasePointerCapture(e.pointerId); } catch {}
     }
   });
-  b.addEventListener('pointerenter', () => {
+  b.addEventListener('pointerenter', (e) => {
     if (Date.now() - Number(b.dataset.bornAt) < 250) return;
-    onRainTap(b, key);
+    if (inkHoldsBubbles(e)) return;
+    onRainTap(b, key, e.pointerId);
   });
   b.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -3000,11 +3032,12 @@ window.addEventListener('pointermove', (e) => {
   // force a layout on every mouse move.
   if (!rainContainer.firstChild) return;
   if (settingsDialog.open) return;
+  if (inkHoldsBubbles(e)) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
   if (!el || !el.classList || !el.classList.contains('rain-bubble')) return;
   if (el.classList.contains('pop')) return;
   if (Date.now() - Number(el.dataset.bornAt || 0) < 250) return;
-  onRainTap(el, el.dataset.key);
+  onRainTap(el, el.dataset.key, e.pointerId);
 });
 
 function popBubble(bubble) {
@@ -3028,11 +3061,11 @@ function popBubble(bubble) {
   updateNextRainMarker();
 }
 
-function onRainTap(bubble, key) {
+function onRainTap(bubble, key, pointerId) {
   if (bubble.classList.contains('pop')) return;
-  // Bubbles carry the song while a swipe sweeps through them: hush the ink.
-  inkLastBubblePopAt = performance.now();
-  for (const s of inkPointers.values()) if (s.live) s.travel = 0;
+  // Bubbles carry the song while a swipe sweeps through them: hush the ink,
+  // and let the swipe's own ink fade (see inkHoldsBubbles).
+  inkBubblePopped(pointerId);
   popBubble(bubble);
   window.dispatchEvent(new KeyboardEvent('keydown', { key }));
 }

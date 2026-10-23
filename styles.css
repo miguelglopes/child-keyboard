@@ -611,12 +611,25 @@ body.reduce-motion .sparkle { animation: none; opacity: 0.3; }
 .ink-eye-shadow { fill: rgba(0, 0, 0, 0.35); }
 .ink-pupil { fill: #1a1230; }
 .ink-smile { fill: none; stroke: #1a1230; stroke-linecap: round; }
-.ink-mouth { fill: #1a1230; display: none; }
+.ink-mouth {
+  fill: #1a1230;
+  display: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scaleY(0.6);
+}
+.ink-face.note .ink-mouth { animation: ink-mouth-note 240ms ease-out; }
+@keyframes ink-mouth-note {
+  0%   { transform: scaleY(0.6); }
+  35%  { transform: scaleY(1.2); }
+  100% { transform: scaleY(0.6); }
+}
 .ink-face.sing .ink-smile { display: none; }
 .ink-face.sing .ink-mouth { display: inline; }
 body.reduce-motion #ink,
 body.reduce-motion .ink-stroke { transition-duration: 0.4s; }
 body.reduce-motion .ink-creature.bounce { animation: none; }
+body.reduce-motion .ink-face.note .ink-mouth { animation: none; }
 
 /* contain: strict on the full-viewport effect layers (#stage, #rain, #ink,
    #confetti, #bg-particles) keeps the style/layout work from inserting and
