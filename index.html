@@ -14,7 +14,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=52" />
+  <link rel="stylesheet" href="styles.css?v=53" />
 </head>
 <body class="theme-rainbow" tabindex="0">
 
@@ -50,6 +50,9 @@
   </div>
 
   <div id="bonus-quest" aria-hidden="true"></div>
+
+  <div id="animals" aria-hidden="true"></div>
+  <button id="animals-invite" type="button" aria-label="Train">🚂<span class="invite-animal" aria-hidden="true">🦁</span></button>
 
   <div id="pace" aria-hidden="true"></div>
   <div id="counter" aria-hidden="true">0</div>
@@ -197,8 +200,13 @@
             <tr><td data-i18n="stats_math"></td><td id="st-today-math">0</td><td id="st-all-math">0</td></tr>
             <tr><td data-i18n="stats_levelups"></td><td id="st-today-levelups">0</td><td id="st-all-levelups">0</td></tr>
             <tr><td data-i18n="stats_bonus"></td><td id="st-today-bonus">0</td><td id="st-all-bonus">0</td></tr>
+            <tr><td data-i18n="stats_catches"></td><td id="st-today-catches">0</td><td id="st-all-catches">0</td></tr>
+            <tr><td data-i18n="stats_trains"></td><td id="st-today-trains">0</td><td id="st-all-trains">0</td></tr>
+            <tr><td data-i18n="stats_golden"></td><td id="st-today-golden">0</td><td id="st-all-golden">0</td></tr>
+            <tr><td data-i18n="stats_seen"></td><td colspan="2" id="st-seen">0</td></tr>
           </tbody>
         </table>
+        <div id="st-seen-grid" class="seen-grid"></div>
       </div>
 
       <div class="settings-buttons">
@@ -213,6 +221,6 @@
 
   <div id="confetti" aria-hidden="true"></div>
 
-  <script src="app.js?v=52"></script>
+  <script src="app.js?v=53"></script>
 </body>
 </html>

@@ -510,6 +510,9 @@ const PHRASES = {
     stats: 'Stats', today: 'Today', all_time: 'All-time',
     stats_keys: 'Keys', stats_words: 'Words', stats_math: 'Math wins', stats_levelups: 'Level-ups',
     stats_bonus: 'Bonus rounds',
+    stats_catches: 'Animals caught', stats_trains: 'Trains', stats_golden: 'Golden animals',
+    stats_seen: 'Animal collection',
+    animals_start: 'The animals escaped!',
     bonus_label: 'NAME IT',
     hold_hint: 'Hold 3s',
     child_themes: 'Child can pick the theme',
@@ -533,6 +536,9 @@ const PHRASES = {
     stats: 'Estatísticas', today: 'Hoje', all_time: 'Total',
     stats_keys: 'Teclas', stats_words: 'Palavras', stats_math: 'Contas certas', stats_levelups: 'Subidas de nível',
     stats_bonus: 'Rondas bónus',
+    stats_catches: 'Animais apanhados', stats_trains: 'Comboios', stats_golden: 'Animais dourados',
+    stats_seen: 'Coleção de animais',
+    animals_start: 'Os animais fugiram!',
     bonus_label: 'ADIVINHA',
     hold_hint: 'Segura 3s',
     child_themes: 'Criança escolhe o tema',
@@ -551,6 +557,78 @@ const THEME_NAMES = {
     mickey: 'Mickey', rainbow: 'Arco-íris', space: 'Espaço', ocean: 'Mar', jungle: 'Selva',
     auto: 'Surpresa',
   },
+};
+
+// Animals round ("Os animais fugiram!"). Words match the letter tables where
+// they can, so the catch line "L. Leão" reuses the letter clip. The target
+// letter is the word's first letter, normalized. A theme with a short list
+// (space) tops it up with the base animals; themes without one use base.
+const ANIMALS = {
+  base: {
+    pt: [
+      ['Abelha', '🐝'], ['Cão', '🐕'], ['Cavalo', '🐴'], ['Dinossauro', '🦖'], ['Elefante', '🐘'],
+      ['Foca', '🦭'], ['Girafa', '🦒'], ['Gato', '🐈'], ['Galinha', '🐔'], ['Hipopótamo', '🦛'],
+      ['Iguana', '🦎'], ['Joaninha', '🐞'], ['Koala', '🐨'], ['Leão', '🦁'], ['Macaco', '🐒'],
+      ['Ovelha', '🐑'], ['Pato', '🦆'], ['Peixe', '🐟'], ['Rato', '🐭'], ['Sapo', '🐸'],
+      ['Serpente', '🐍'], ['Tartaruga', '🐢'], ['Tigre', '🐯'], ['Tubarão', '🦈'], ['Urso', '🐻'],
+      ['Vaca', '🐄'], ['Zebra', '🦓'],
+    ],
+    en: [
+      ['Ant', '🐜'], ['Bear', '🐻'], ['Bee', '🐝'], ['Cat', '🐈'], ['Dog', '🐕'], ['Dolphin', '🐬'],
+      ['Duck', '🦆'], ['Elephant', '🐘'], ['Fish', '🐟'], ['Giraffe', '🦒'], ['Horse', '🐴'],
+      ['Jellyfish', '🪼'], ['Jaguar', '🐆'], ['Kangaroo', '🦘'], ['Lion', '🦁'], ['Monkey', '🐒'],
+      ['Mouse', '🐭'], ['Owl', '🦉'], ['Octopus', '🐙'], ['Penguin', '🐧'], ['Pig', '🐷'],
+      ['Rabbit', '🐰'], ['Snake', '🐍'], ['Tiger', '🐯'], ['Turtle', '🐢'], ['Unicorn', '🦄'],
+      ['Whale', '🐳'], ['Wolf', '🐺'], ['Zebra', '🦓'],
+    ],
+  },
+  ocean: {
+    pt: [
+      ['Alforreca', '🪼'], ['Baleia', '🐋'], ['Caranguejo', '🦀'], ['Foca', '🦭'], ['Golfinho', '🐬'],
+      ['Lula', '🦑'], ['Lagosta', '🦞'], ['Peixe', '🐟'], ['Polvo', '🐙'], ['Pinguim', '🐧'],
+      ['Tubarão', '🦈'], ['Tartaruga', '🐢'],
+    ],
+    en: [
+      ['Crab', '🦀'], ['Dolphin', '🐬'], ['Fish', '🐟'], ['Jellyfish', '🪼'], ['Lobster', '🦞'],
+      ['Octopus', '🐙'], ['Penguin', '🐧'], ['Shark', '🦈'], ['Seal', '🦭'], ['Squid', '🦑'],
+      ['Turtle', '🐢'], ['Whale', '🐋'],
+    ],
+  },
+  jungle: {
+    pt: [
+      ['Borboleta', '🦋'], ['Coruja', '🦉'], ['Crocodilo', '🐊'], ['Elefante', '🐘'], ['Esquilo', '🐿️'],
+      ['Gorila', '🦍'], ['Girafa', '🦒'], ['Hipopótamo', '🦛'], ['Iguana', '🦎'], ['Javali', '🐗'],
+      ['Leão', '🦁'], ['Lobo', '🐺'], ['Macaco', '🐒'], ['Ouriço', '🦔'], ['Papagaio', '🦜'],
+      ['Raposa', '🦊'], ['Serpente', '🐍'], ['Sapo', '🐸'], ['Tigre', '🐯'], ['Urso', '🐻'],
+      ['Veado', '🦌'], ['Zebra', '🦓'],
+    ],
+    en: [
+      ['Bear', '🐻'], ['Butterfly', '🦋'], ['Crocodile', '🐊'], ['Deer', '🦌'], ['Elephant', '🐘'],
+      ['Fox', '🦊'], ['Frog', '🐸'], ['Gorilla', '🦍'], ['Giraffe', '🦒'], ['Hedgehog', '🦔'],
+      ['Lion', '🦁'], ['Monkey', '🐒'], ['Owl', '🦉'], ['Parrot', '🦜'], ['Snake', '🐍'],
+      ['Squirrel', '🐿️'], ['Tiger', '🐯'], ['Wolf', '🐺'], ['Zebra', '🦓'],
+    ],
+  },
+  space: {
+    pt: [['Extraterrestre', '👽']],
+    en: [['Alien', '👽']],
+  },
+};
+
+// The golden animal: no letter shown, spelled to be caught. Pictures with
+// one name a Portuguese 9-year-old would give (no 🐊 crocodilo/jacaré).
+// Touch and TV spell from tiles, so they only get names up to 8 letters.
+const GOLDEN = {
+  pt: [
+    ['Hipopótamo', '🦛'], ['Canguru', '🦘'], ['Pinguim', '🐧'], ['Borboleta', '🦋'], ['Girafa', '🦒'],
+    ['Elefante', '🐘'], ['Tartaruga', '🐢'], ['Golfinho', '🐬'], ['Joaninha', '🐞'], ['Macaco', '🐒'],
+    ['Coruja', '🦉'], ['Zebra', '🦓'],
+  ],
+  en: [
+    ['Kangaroo', '🦘'], ['Penguin', '🐧'], ['Butterfly', '🦋'], ['Giraffe', '🦒'], ['Elephant', '🐘'],
+    ['Turtle', '🐢'], ['Dolphin', '🐬'], ['Octopus', '🐙'], ['Monkey', '🐒'], ['Rabbit', '🐰'],
+    ['Zebra', '🦓'], ['Squirrel', '🐿️'],
+  ],
 };
 
 // ─── SETTINGS ───────────────────────────────────────────────────────────────
@@ -928,7 +1006,7 @@ function stopClip() {
   playingClip = null;
 }
 
-function playClip(text) {
+function playClip(text, onDone) {
   const file = voiceClips[settings.lang]?.[text];
   if (!file) return false;
   let a = clipAudio.get(file);
@@ -938,22 +1016,41 @@ function playClip(text) {
   }
   playingClip = a;
   a.currentTime = 0;
+  a.onended = onDone || null;
   // AbortError = interrupted by the next say(); anything else (missing file…) → TTS
-  a.play().catch(e => { if (e.name !== 'AbortError' && playingClip === a) speakTTS(text); });
+  a.play().catch(e => { if (e.name !== 'AbortError' && playingClip === a) speakTTS(text, onDone); });
   return true;
 }
 
-function say(text, { force = false } = {}) {
+// Priority lines (the animals round's catch and start lines) play to the end:
+// every say() that arrives meanwhile is dropped, priority or not — no queue,
+// so smashing can't pile lines up. Released when the clip or utterance ends,
+// or after VOICE_PRIORITY_MAX_MS if neither reports back (the longest catch
+// line, "H. Hipopótamo", runs 3.9s).
+const VOICE_PRIORITY_MAX_MS = 4500;
+let voiceBusy = null;
+function say(text, { force = false, priority = false } = {}) {
   if (!force && !settings.voice) return;
+  if (voiceBusy && !force) return;
+  voiceBusy = null; // a forced line replaces whatever was playing, lock and all
   stopClip();
   window.speechSynthesis?.cancel();
-  if (!playClip(text)) speakTTS(text);
+  let onDone;
+  if (priority) {
+    const token = {};
+    const release = () => { if (voiceBusy === token) voiceBusy = null; };
+    voiceBusy = token;
+    setTimeout(release, VOICE_PRIORITY_MAX_MS);
+    onDone = release;
+  }
+  if (!playClip(text, onDone)) speakTTS(text, onDone);
 }
 
-function speakTTS(text) {
+function speakTTS(text, onDone) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
+  if (onDone) u.onend = onDone;
   const v = pickVoice();
   if (v) u.voice = v;
   u.lang = settings.lang === 'pt' ? 'pt-PT' : 'en-US';
@@ -973,6 +1070,7 @@ const state = {
   wordStreak: 0,
   mathStreak: 0,
   bonus: null, bonusTimer: null,
+  animals: null, animalsPending: null, // animals round: active / waiting to start
 };
 
 function effectiveWordLevel() {
@@ -1002,6 +1100,7 @@ function loadStats() {
   if (s.date !== today) {
     s.date = today;
     s.todayKeys = 0; s.todayWords = 0; s.todayMath = 0; s.todayLevelUps = 0;
+    s.todayBonus = 0; s.todayCatches = 0; s.todayTrains = 0; s.todayGolden = 0;
   }
   return {
     date: s.date || today,
@@ -1010,11 +1109,17 @@ function loadStats() {
     todayMath: s.todayMath || 0,
     todayLevelUps: s.todayLevelUps || 0,
     todayBonus: s.todayBonus || 0,
+    todayCatches: s.todayCatches || 0,
+    todayTrains: s.todayTrains || 0,
+    todayGolden: s.todayGolden || 0,
     allTimeKeys: s.allTimeKeys || 0,
     allTimeWords: s.allTimeWords || 0,
     allTimeMath: s.allTimeMath || 0,
     allTimeLevelUps: s.allTimeLevelUps || 0,
     allTimeBonus: s.allTimeBonus || 0,
+    allTimeCatches: s.allTimeCatches || 0,
+    allTimeTrains: s.allTimeTrains || 0,
+    allTimeGolden: s.allTimeGolden || 0,
   };
 }
 
@@ -1026,6 +1131,7 @@ function rollIfNewDay() {
   if (stats.date !== t) {
     stats.date = t;
     stats.todayKeys = 0; stats.todayWords = 0; stats.todayMath = 0; stats.todayLevelUps = 0; stats.todayBonus = 0;
+    stats.todayCatches = 0; stats.todayTrains = 0; stats.todayGolden = 0;
   }
 }
 
@@ -1287,8 +1393,15 @@ function tryWordLetter(letter) {
       paceBump();
       if (state.wordEmoji) renderWord();
       maybeLevelUpWord();
-      // ~60% chance to trigger a bonus picture quest after a win
-      if (Math.random() < 0.6) setTimeout(startBonus, 2200);
+      // ~60% chance of a bonus round after a win (none while ADIVINHA is on —
+      // a delayed one could start right after it closes): the picture quest
+      // or the animals round, taking turns. The animals round deals the next word
+      // only when it closes, so a fresh word is never swapped out under the
+      // child.
+      if (!state.bonus && Math.random() < 0.6) {
+        if (bonusRollPicksAnimals() && requestAnimals('word', { owesNewWord: true, delay: 2200 })) return true;
+        setTimeout(startBonus, 2200);
+      }
       setTimeout(newWord, 1800);
     } else {
       renderWord();
@@ -1303,7 +1416,9 @@ function tryWordLetter(letter) {
 const BONUS_DURATION_MS = 30000;
 
 function startBonus({ characters = false } = {}) {
-  if (state.bonus) return;
+  if (state.bonus || state.animals || state.animalsPending) return;
+  hideAnimalsInvite();
+  animalsTurn = true;
   const pool = themedPool(characters);
   const pick = pool[Math.floor(Math.random() * pool.length)];
   state.bonus = {
@@ -1506,13 +1621,781 @@ function updateLevelLabels() {
   if (mathLv) mathLv.textContent = `· Lv ${mIdx + 1}`;
 }
 
+// ─── ANIMALS ROUND ──────────────────────────────────────────────────────────
+// "Os animais fugiram!" — a short interlude between words. A big animal peeks
+// out wearing its letter: any key or tap lures it one hop toward the train,
+// and its own letter (or a tap on the animal) catches it at once. One rule set
+// for every age — a smashing baby fills trains by luring, a child who knows
+// the letter is faster. Each train also offers a golden animal with no letter
+// shown, caught by spelling its name (typed, or picked from tiles on touch and
+// the TV); the train waits for it. A round ends at a departure: two trains or
+// ANIMALS_ROUND_MS. Design and the reasoning behind each rule:
+// docs/animals-round.md.
+
+const ANIMALS_ROUND_MS = 60000;
+const ANIMALS_COOLDOWN_MS = 180000;  // between rounds dealt by the word-win roll
+const ANIMAL_HOP_GAP_MS = 450;       // lures closer together than this don't hop
+const ANIMAL_HOPS = 8;               // lures before it hops in by itself
+const ANIMAL_HINT_HOP = 4;           // badge grows and the letter is said
+const TRAIN_WAGONS = 3;
+const TRAINS_PER_ROUND = 2;
+const AUTO_HOP_MS = 600;             // deadline: remaining wagons fill one per step
+const GOLDEN_NOTICE_MS = 12000;      // it waits this long for someone to start
+const GOLDEN_HINT_MS = 5000;         // …and shows its first letter after this
+const GOLDEN_LETTER_MS = { key: 4000, tiles: 6000 }; // per letter, refilled by each right one
+const GOLDEN_PENALTY_MS = 1000;      // a wrong tile, at most once a second
+const GOLDEN_ATTEMPT_MAX_MS = 30000;
+const GOLDEN_TILE_MAX_LETTERS = 8;
+const GOLDEN_BURST_KEYS = 5;         // this many keys inside a second = mashing, no ⭐
+const INVITE_AFTER_MS = 240000;      // no round for this long despite play → invite
+const INVITE_MIN_ACTIVITY = 40;
+const INVITE_SHOW_MS = 20000;
+const INVITE_AGAIN_MS = 120000;
+const ANIMALS_WORDS = ['COMBOIO', 'ANIMAIS', 'TRAIN', 'ANIMALS'];
+
+const animalsEl = document.getElementById('animals');
+const animalsInvite = document.getElementById('animals-invite');
+const HIDE_SPOTS = { ocean: ['🪸', '🪨'], jungle: ['🌿', '🌳'], space: ['🪐', '☁️'], baby: ['☁️'] };
+const DEFAULT_SPOTS = ['🌿', '🌳', '🪨', '☁️'];
+// Letters a speller mixes up: the golden animal's decoy tiles.
+const CONFUSABLE = {
+  A: 'EO', B: 'DP', C: 'KSQ', D: 'BT', E: 'AI', F: 'VT', G: 'JQ', H: 'NM', I: 'EY', J: 'GX',
+  K: 'CQ', L: 'RI', M: 'NH', N: 'MH', O: 'UA', P: 'BQ', Q: 'CK', R: 'LT', S: 'ZC', T: 'DF',
+  U: 'OV', V: 'FB', W: 'VU', X: 'SZ', Y: 'IJ', Z: 'SX',
+};
+
+let animalsTurn = true;               // the bonus roll alternates: animals, then ADIVINHA
+let animalsLastEndAt = -Infinity;
+let animalsTyped = '';
+let animalsActivity = 0;
+let animalsActivitySince = performance.now();
+let inviteShownAt = -Infinity;
+let inviteTimer = null;
+let seenCard = null;
+
+const SEEN_KEY = 'ck-animals-seen';
+const SEEN_RANK = { n: 1, g: 2, s: 3 }; // caught, golden, golden first try
+let animalsSeen = {};
+try { animalsSeen = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); } catch {}
+
+const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+const animalLine = (word) => `${word[0].toUpperCase()}. ${word}`;
+
+function animalPool() {
+  const t = ANIMALS[effectiveTheme()];
+  const own = t ? (t[settings.lang] || t.pt) : [];
+  const list = own.length >= 8 ? own : [...own, ...(ANIMALS.base[settings.lang] || ANIMALS.base.pt)];
+  return list.map(([word, icon]) => ({ word, icon, letter: normalize(word)[0] }));
+}
+
+function goldenPool() {
+  const tiles = isTouchCapable || isWebOS;
+  return (GOLDEN[settings.lang] || GOLDEN.pt)
+    .map(([word, icon]) => ({ word, icon, norm: normalize(word) }))
+    .filter(g => !tiles || g.norm.length <= GOLDEN_TILE_MAX_LETTERS);
+}
+
+// ── Starting: one coordinator owns the wait between "chosen" and "started" ──
+
+function bonusRollPicksAnimals() {
+  return animalsTurn && performance.now() - animalsLastEndAt >= ANIMALS_COOLDOWN_MS;
+}
+
+// A pending start's own token passes its re-check when it fires; any other
+// request while one is pending or a round is on is ignored (first wins).
+function animalsEligible(token) {
+  return settings.quests && !settingsDialog.open && !state.bonus && !state.animals
+    && (!state.animalsPending || state.animalsPending.token === token);
+}
+
+function requestAnimals(trigger, { owesNewWord = false, delay = 0 } = {}) {
+  if (!animalsEligible(null)) return false;
+  const pending = { token: {}, trigger, owesNewWord, timer: 0 };
+  state.animalsPending = pending;
+  hideAnimalsInvite();
+  pending.timer = setTimeout(() => {
+    if (state.animalsPending !== pending) return;
+    if (!animalsEligible(pending.token)) { cancelPendingAnimals(); return; }
+    state.animalsPending = null;
+    startAnimals(pending);
+  }, delay);
+  return true;
+}
+
+// A cancelled word-win start still owes the child the next word.
+function cancelPendingAnimals({ dealOwedWord = true } = {}) {
+  const p = state.animalsPending;
+  if (!p) return;
+  clearTimeout(p.timer);
+  state.animalsPending = null;
+  if (p.owesNewWord && dealOwedWord) newWord();
+}
+
+// Typing COMBOIO / ANIMAIS starts a round, from real keypresses only — unless
+// its last letter moved a quest on (like the typed theme names) or it's the
+// answer to the quest on screen, so COMBOIO typed as an answer stays an answer.
+function typedAnimalsCommand(norm, source, wasQuestProgress) {
+  if (source !== 'key') return false;
+  animalsTyped = (animalsTyped + norm).slice(-8);
+  const word = ANIMALS_WORDS.find(w => animalsTyped.endsWith(w));
+  if (!word || wasQuestProgress) return false;
+  animalsTyped = '';
+  if (state.word === word || state.bonus?.word === word) return false;
+  return requestAnimals('typed', { delay: 300 });
+}
+
+// The invitation: for children who rarely finish a word. It only appears after
+// a long stretch of play without a round, waits to be tapped (or Enter), and
+// never starts anything by itself.
+function noteAnimalsActivity(source) {
+  if (source !== 'key' && source !== 'stage') return;
+  animalsActivity++;
+  const now = performance.now();
+  if (animalsInviteShown() || animalsActivity < INVITE_MIN_ACTIVITY) return;
+  if (now - animalsActivitySince < INVITE_AFTER_MS || now - inviteShownAt < INVITE_AGAIN_MS) return;
+  if (now - animalsLastEndAt < ANIMALS_COOLDOWN_MS || !animalsEligible(null)) return;
+  inviteShownAt = now;
+  animalsInvite.classList.add('show');
+  inviteTimer = setTimeout(hideAnimalsInvite, INVITE_SHOW_MS);
+}
+function animalsInviteShown() { return animalsInvite.classList.contains('show'); }
+function hideAnimalsInvite() {
+  clearTimeout(inviteTimer);
+  animalsInvite.classList.remove('show');
+}
+function acceptAnimalsInvite() {
+  hideAnimalsInvite();
+  requestAnimals('invite');
+}
+
+// Round buttons act on pointerdown (a tap, a click, the Magic Remote's OK) and
+// also on click, for an OK that only clicks. One press can arrive as several
+// events — pointerdown, click, and on the TV an Enter too — so after an
+// activation its companions are swallowed for ACT_GUARD_MS at that spot, even
+// once the button is gone (a used tile hides, a caught animal flies off) and
+// the companion would land on the stage as a lure. A press elsewhere (the next
+// tile) still counts. The invitation is a round button too, so the guard also
+// works outside rounds — the tap it swallows there is the invite's own. No
+// stopPropagation: the stage ignores buttons itself, and ensureKiosk() must
+// still see the tap.
+const ACT_GUARD_MS = 400;
+const ACT_GUARD_PX = 30;
+let actGuard = null;
+function animalsActGuarded(x, y) {
+  return !!actGuard && performance.now() < actGuard.until
+    && Math.hypot(x - actGuard.x, y - actGuard.y) <= ACT_GUARD_PX;
+}
+function bindAnimalsAct(el, fn) {
+  el.dataset.animalsAct = '';
+  el.animalsAct = fn;
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    activateAnimalsAct(el, e.clientX, e.clientY);
+  });
+  el.addEventListener('click', (e) => activateAnimalsAct(el, e.clientX, e.clientY));
+}
+function activateAnimalsAct(el, x, y) {
+  const now = performance.now();
+  if (animalsActGuarded(x, y) || now - (el.animalsLastAct || -Infinity) < ACT_GUARD_MS) return;
+  el.animalsLastAct = now;
+  actGuard = { until: now + ACT_GUARD_MS, x, y };
+  el.animalsAct();
+}
+bindAnimalsAct(animalsInvite, () => { if (animalsInviteShown()) acceptAnimalsInvite(); });
+
+// The TV's OK can arrive as Enter with the cursor resting on a round button.
+// webOS only: on a desktop, Enter with the mouse over the animal is just Enter.
+let remotePointer = null;
+if (isWebOS) {
+  window.addEventListener('pointermove', (e) => { remotePointer = [e.clientX, e.clientY]; }, { passive: true });
+}
+function animalsRemoteOk(e) {
+  if (!isWebOS || !remotePointer || (e.key !== 'Enter' && e.keyCode !== 13)) return false;
+  const [x, y] = remotePointer;
+  if (animalsActGuarded(x, y)) return true; // the Enter that came with a click
+  const el = document.elementFromPoint(x, y)?.closest('[data-animals-act]');
+  if (!el) return false;
+  activateAnimalsAct(el, x, y);
+  return true;
+}
+
+// ── The round ──
+
+function aTimer(fn, ms) {
+  const A = state.animals;
+  const id = setTimeout(() => {
+    A.timers.delete(id);
+    if (state.animals === A) fn();
+  }, ms);
+  A.timers.add(id);
+  return id;
+}
+function aClear(id) {
+  clearTimeout(id);
+  state.animals?.timers.delete(id);
+}
+
+function startAnimals({ trigger, owesNewWord }) {
+  animalsTurn = false;
+  animalsTyped = '';
+  hideAnimalsInvite();
+  dismissSeenCard();
+  inkCancelAll();
+  rainContainer.textContent = ''; // removed, not popped: a pop would type its key
+  state.animals = {
+    trigger, owesNewWord, timers: new Set(),
+    deadlinePassed: false, departing: false, trains: 0,
+    train: null, animal: null, golden: null,
+    pool: animalPool(), lastAnimal: null, lastGolden: null, caught: new Set(),
+  };
+  document.body.classList.add('animals-on');
+  const label = PHRASES[settings.lang].animals_start;
+  animalsEl.innerHTML = `<div class="animals-banner">${label}</div>` +
+    '<div class="golden-band"></div><div class="animal-field"></div><div class="train-band"></div>';
+  say(label, { priority: true });
+  toot();
+  newTrain();
+  aTimer(onAnimalsDeadline, ANIMALS_ROUND_MS);
+}
+
+// forced: a theme pick, settings, quests off — leave at once, no card.
+function closeAnimals({ forced = false, dealOwedWord = true } = {}) {
+  const A = state.animals;
+  if (!A) return;
+  for (const id of A.timers) clearTimeout(id);
+  state.animals = null;
+  animalsLastEndAt = performance.now();
+  animalsTyped = '';
+  animalsActivity = 0;
+  animalsActivitySince = performance.now();
+  document.body.classList.remove('animals-on');
+  animalsEl.innerHTML = '';
+  // Auto theme switching waits a little after a round, so the first key
+  // doesn't swap the theme (and the word) under the collection card.
+  lastThemeSwitchAt = Math.max(lastThemeSwitchAt, performance.now() - settings.themeIntervalMin * 60000 + 30000);
+  if (forced) voiceBusy = null; // a theme pick or Test voice speaks next
+  // The word quest was only hidden, so a half-done word is still there. A
+  // word-win start finished its word, and deals the next one now.
+  if (A.owesNewWord && dealOwedWord) newWord();
+  if (!forced) showSeenCard(A);
+}
+
+// Every key and tap in a round comes here instead of the quests, the theme
+// switch and the typed names. Lure keys are silent so the hint isn't cut off.
+function animalsKey(rawKey, source) {
+  const A = state.animals;
+  const isLetter = /^[a-zA-ZÀ-ÿ]$/.test(rawKey);
+  const norm = isLetter ? normalize(rawKey.toUpperCase()) : null;
+  let caught = false;
+  if (source === 'key') {
+    noteGoldenKeyTime();
+    // One letter can serve both: the golden name's next letter and the big
+    // animal's badge. Neither sibling's right answer is taken by the other.
+    const forGolden = isLetter && goldenKey(norm);
+    if (isLetter && A.animal?.state === 'peek' && norm === A.animal.letter) {
+      catchAnimal(true);
+      caught = true;
+    } else if (!forGolden) {
+      lureAnimal();
+    }
+  } else if (source === 'stage') {
+    lureAnimal();
+  }
+  // 'repeat' and 'synthetic' only get the playground feedback.
+  if (!caught) animalsFeedback(rawKey, isLetter);
+}
+
+function animalsFeedback(rawKey, isLetter) {
+  if (isLetter) {
+    const up = rawKey.toUpperCase();
+    const data = pickLetterContent(up) || pickLetterContent(normalize(up));
+    spawn(up, data?.[1]);
+    playNote(normalize(up));
+  } else if (/^[0-9]$/.test(rawKey)) {
+    spawn(rawKey, '🔢');
+    playNote(rawKey);
+  } else if (rawKey.length === 1 && rawKey !== ' ') {
+    spawn(rawKey, randomFunEmoji());
+    playNote(rawKey);
+  } else {
+    randomDelight();
+  }
+}
+
+function toot() {
+  beep(392.00, 0.2, 'square', 0.06);
+  beep(523.25, 0.32, 'square', 0.06, 0.22);
+}
+
+// ── Train ──
+
+function newTrain() {
+  const A = state.animals;
+  const el = document.createElement('div');
+  el.className = 'train entering';
+  el.innerHTML = '<span class="loco">🚂</span>' +
+    '<div class="wagon"><span class="cargo"></span></div>'.repeat(TRAIN_WAGONS) +
+    '<div class="wagon golden"><span class="cargo"></span></div>';
+  const band = animalsEl.querySelector('.train-band');
+  band.textContent = '';
+  band.appendChild(el);
+  el.getBoundingClientRect(); // start off-screen, then roll in
+  el.classList.remove('entering');
+  // golden: none → offered → attempt → done
+  A.train = { el, filled: 0, caught: 0, golden: 'none' };
+  aTimer(spawnBigAnimal, settings.reduceMotion ? 300 : 1000);
+}
+
+function trainWaiting() {
+  const A = state.animals;
+  return A.train.filled >= TRAIN_WAGONS && !A.departing;
+}
+
+function wiggleTrain() {
+  const el = state.animals.train.el;
+  el.classList.remove('wiggle');
+  el.getBoundingClientRect();
+  el.classList.add('wiggle');
+  beep(392.00, 0.12, 'square', 0.05);
+}
+
+// A full train leaves once its golden animal is caught or gone.
+function tryDepart() {
+  const A = state.animals;
+  if (!A || A.departing || A.train.filled < TRAIN_WAGONS) return;
+  if (A.train.golden === 'offered' || A.train.golden === 'attempt') {
+    A.golden?.el.classList.add('waiting');
+    return;
+  }
+  A.departing = true;
+  toot();
+  fanfare();
+  confetti(40);
+  if (A.train.caught) { record('Trains'); paceBump(); }
+  A.train.el.classList.add('leaving');
+  aTimer(() => {
+    A.trains++;
+    A.departing = false;
+    if (A.trains >= TRAINS_PER_ROUND || A.deadlinePassed) closeAnimals();
+    else newTrain();
+  }, settings.reduceMotion ? 700 : 1600);
+}
+
+// At the deadline no new train or golden is offered; the train's empty wagons
+// fill one per AUTO_HOP_MS, it waits for a golden already being spelled, and
+// the round closes at its departure. These rescues aren't the child's catches:
+// no stats, no collection, no voice. A train nobody has caught anything for
+// yet just rolls away.
+function onAnimalsDeadline() {
+  const A = state.animals;
+  A.deadlinePassed = true;
+  if (A.train.golden === 'none') A.train.golden = 'done';
+  if (A.golden?.state === 'offered') goldenLeave();
+  if (A.departing) return;
+  if (A.train.filled === 0) {
+    A.departing = true;
+    if (A.animal) { A.animal.el.remove(); A.animal.spot.remove(); A.animal = null; }
+    A.train.el.classList.add('leaving');
+    aTimer(closeAnimals, settings.reduceMotion ? 700 : 1600);
+    return;
+  }
+  autoFill();
+}
+
+function autoFill() {
+  const A = state.animals;
+  if (A.departing) return;
+  if (A.train.filled >= TRAIN_WAGONS) { tryDepart(); return; }
+  if (A.animal?.state === 'peek') catchAnimal(false, { rescue: true });
+  else if (!A.animal) fillWagon(pickOne(A.pool));
+  aTimer(autoFill, AUTO_HOP_MS);
+}
+
+function nextWagon() {
+  const A = state.animals;
+  return A.train.el.querySelectorAll('.wagon:not(.golden)')[A.train.filled];
+}
+
+function fillWagon(animal) {
+  const A = state.animals;
+  const slot = nextWagon();
+  if (!slot) return;
+  A.train.filled++;
+  slot.querySelector('.cargo').innerHTML = iconHtml(animal.icon);
+  slot.classList.add('full');
+  beep(880, 0.08, 'sine', 0.1);
+  if (A.train.filled >= TRAIN_WAGONS) tryDepart();
+}
+
+// ── Big animal ──
+
+function spawnBigAnimal() {
+  const A = state.animals;
+  if (A.animal || A.departing || A.deadlinePassed || A.train.filled >= TRAIN_WAGONS) return;
+  // Not the golden animal's initial, so catching it doesn't start a spelling
+  // attempt by accident.
+  const avoid = A.golden && A.golden.state !== 'done' ? A.golden.norm[0] : null;
+  let choices = A.pool.filter(a => a.letter !== avoid && a.word !== A.lastAnimal);
+  if (!choices.length) choices = A.pool;
+  const pick = pickOne(choices);
+  A.lastAnimal = pick.word;
+  const x = 28 + Math.random() * 44, y = 56;
+  const spot = document.createElement('div');
+  spot.className = 'animal-spot';
+  spot.textContent = pickOne(HIDE_SPOTS[effectiveTheme()] || DEFAULT_SPOTS);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'animal-big';
+  btn.innerHTML = '<span class="animal-hop"><span class="animal-peek">' +
+    `<span class="animal-icon">${iconHtml(pick.icon)}</span><span class="animal-badge">${pick.letter}</span>` +
+    '</span></span>';
+  for (const el of [spot, btn]) { el.style.left = x + '%'; el.style.top = y + '%'; }
+  animalsEl.querySelector('.animal-field').append(btn, spot);
+  bindAnimalsAct(btn, () => catchAnimal(true));
+  A.animal = { ...pick, el: btn, spot, x, y, hops: 0, lastHopAt: -Infinity, state: 'peek' };
+}
+
+// Offset from the animal's home spot toward `slot`, `frac` of the way.
+function towardSlot(an, slot, frac) {
+  const r = slot.getBoundingClientRect();
+  const dx = (r.left + r.width / 2 - an.x / 100 * window.innerWidth) * frac;
+  const dy = (r.top + r.height / 2 - an.y / 100 * window.innerHeight) * frac;
+  return `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+
+function lureAnimal() {
+  const A = state.animals;
+  const an = A.animal;
+  if (!an || an.state !== 'peek') {
+    if (trainWaiting()) wiggleTrain();
+    return;
+  }
+  const now = performance.now();
+  if (now - an.lastHopAt < ANIMAL_HOP_GAP_MS) return;
+  an.lastHopAt = now;
+  an.hops++;
+  if (an.hops >= ANIMAL_HOPS) { catchAnimal(false); return; }
+  an.el.style.transform = towardSlot(an, nextWagon(), (an.hops / ANIMAL_HOPS) * 0.8);
+  an.spot.classList.add('gone'); // out of hiding: the spot must not cover the badge
+  if (!settings.reduceEffects && !settings.reduceMotion) {
+    const hop = an.el.querySelector('.animal-hop');
+    hop.classList.remove('jump');
+    hop.getBoundingClientRect();
+    hop.classList.add('jump');
+  }
+  if (an.hops === ANIMAL_HINT_HOP) {
+    an.el.classList.add('hint');
+    say(an.letter); // normal priority: never cuts a catch line
+  }
+}
+
+// instant: its letter or a tap on it — a bigger reward than hopping in.
+// rescue: hopped in at the deadline, not caught by the child.
+function catchAnimal(instant, { rescue = false } = {}) {
+  const A = state.animals;
+  const an = A.animal;
+  if (!an || an.state !== 'peek') return;
+  an.state = 'caught';
+  A.animal = null;
+  const slot = nextWagon();
+  A.train.filled++;
+  an.el.classList.add(instant ? 'caught-instant' : 'caught');
+  an.el.style.transform = towardSlot(an, slot, 1) + ' scale(0.4)';
+  an.spot.classList.add('gone');
+  if (!rescue) {
+    spawnOriginOverride = { x: an.x, y: an.y - 12 };
+    spawn(an.letter, an.icon);
+    say(animalLine(an.word), { priority: true });
+    record('Catches');
+    markSeen(an.word, 'n');
+    A.caught.add(an.word);
+    A.train.caught++;
+  }
+  if (instant) {
+    questDing();
+    beep(1567.98, 0.14, 'triangle', 0.09, 0.2);
+    if (!settings.reduceEffects) confetti(14);
+  } else {
+    beep(660, 0.1, 'sine', 0.12);
+  }
+  aTimer(() => {
+    an.el.remove();
+    an.spot.remove();
+    slot.querySelector('.cargo').innerHTML = iconHtml(an.icon);
+    slot.classList.add('full', instant ? 'instant' : 'plain');
+    if (A.train.filled === 1 && A.train.golden === 'none' && !A.deadlinePassed) offerGolden();
+    if (A.train.filled >= TRAIN_WAGONS) tryDepart();
+    else aTimer(spawnBigAnimal, 500);
+  }, settings.reduceMotion ? 200 : 450);
+}
+
+// ── Golden animal ──
+
+function offerGolden() {
+  const A = state.animals;
+  const avoid = A.animal?.letter;
+  const pool = goldenPool().filter(g => g.norm[0] !== avoid && g.word !== A.lastGolden);
+  if (!pool.length) { A.train.golden = 'done'; return; }
+  const g = pickOne(pool);
+  A.lastGolden = g.word;
+  A.train.golden = 'offered';
+  const el = document.createElement('div');
+  el.className = 'golden';
+  el.innerHTML = `<button type="button" class="golden-animal">${iconHtml(g.icon)}</button>` +
+    `<div class="golden-slots">${'<span class="slot"></span>'.repeat(g.norm.length)}</div>` +
+    '<div class="golden-clock"><div class="golden-clock-bar"></div></div>' +
+    '<div class="golden-bank"></div>';
+  animalsEl.querySelector('.golden-band').appendChild(el);
+  bindAnimalsAct(el.querySelector('.golden-animal'), () => engageGolden('tiles'));
+  A.golden = {
+    ...g, el, idx: 0, state: 'offered', tiles: false, wrongTile: false, burst: false,
+    keyTimes: [], clockEnd: 0, letterMs: GOLDEN_LETTER_MS.key, lastPenaltyAt: -Infinity, startedAt: 0,
+  };
+  A.golden.noticeTimer = aTimer(goldenLeave, GOLDEN_NOTICE_MS);
+  aTimer(() => { if (A.golden?.el === el && A.golden.idx === 0) revealGoldenSlot(0, true); }, GOLDEN_HINT_MS);
+}
+
+function revealGoldenSlot(i, hint = false) {
+  const G = state.animals.golden;
+  const slot = G.el.querySelectorAll('.slot')[i];
+  slot.textContent = G.word[i].toUpperCase();
+  slot.classList.toggle('hint', hint);
+  slot.classList.toggle('done', !hint);
+}
+
+// A tap on the golden animal (tiles) or typing its first letter (key).
+function engageGolden(mode) {
+  const A = state.animals;
+  const G = A.golden;
+  if (!G || G.state === 'done') return;
+  if (mode === 'tiles') {
+    G.letterMs = GOLDEN_LETTER_MS.tiles;
+    if (!G.tiles) openGoldenBank();
+  }
+  if (G.state !== 'offered') return;
+  G.state = 'attempt';
+  A.train.golden = 'attempt';
+  aClear(G.noticeTimer);
+  G.startedAt = performance.now();
+  G.clockEnd = G.startedAt + G.letterMs;
+  G.el.classList.add('attempt');
+  goldenTick();
+}
+
+function goldenTick() {
+  const G = state.animals.golden;
+  if (!G || G.state !== 'attempt') return;
+  const now = performance.now();
+  if (now >= G.clockEnd || now - G.startedAt >= GOLDEN_ATTEMPT_MAX_MS) { goldenLeave(); return; }
+  const left = Math.min(1, (G.clockEnd - now) / G.letterMs);
+  G.el.querySelector('.golden-clock-bar').style.transform = `scaleX(${left})`;
+  aTimer(goldenTick, 200);
+}
+
+// Keyboard: wrong keys cost nothing — on a shared keyboard they can't be told
+// apart from a sibling's smashing. Only bursts are noted, for the ⭐.
+function noteGoldenKeyTime() {
+  const G = state.animals.golden;
+  if (!G || G.state !== 'attempt') return;
+  const now = performance.now();
+  G.keyTimes = G.keyTimes.filter(t => now - t < 1000);
+  G.keyTimes.push(now);
+  if (G.keyTimes.length >= GOLDEN_BURST_KEYS) G.burst = true;
+}
+
+function goldenKey(norm) {
+  const G = state.animals.golden;
+  if (!G || G.state === 'done' || norm !== G.norm[G.idx]) return false;
+  if (G.state === 'offered') engageGolden('key');
+  advanceGolden(null);
+  return true;
+}
+
+function advanceGolden(tile) {
+  const G = state.animals.golden;
+  const letter = G.norm[G.idx];
+  if (G.tiles) {
+    tile = tile || [...G.el.querySelectorAll('.tile:not(.used)')].find(t => t.dataset.letter === letter);
+    tile?.classList.add('used');
+  }
+  revealGoldenSlot(G.idx);
+  G.idx++;
+  themeSynth()(KEY_TO_FREQ[letter] || 523.25);
+  if (G.idx >= G.norm.length) { goldenCaught(); return; }
+  G.clockEnd = performance.now() + G.letterMs;
+}
+
+// Tiles: the letters still missing plus confusable decoys, shuffled, with no
+// hint which is next. A wrong tile shakes and costs a second, at most once a
+// second, so a toddler tapping tiles can't empty an older sibling's clock.
+function openGoldenBank() {
+  const G = state.animals.golden;
+  G.tiles = true;
+  const rest = [...G.norm.slice(G.idx)];
+  const inName = new Set(G.norm);
+  const decoys = [];
+  const want = 2 + Math.floor(G.norm.length / 3);
+  for (const c of [...new Set([...G.norm].flatMap(l => [...(CONFUSABLE[l] || '')]))].sort(() => Math.random() - 0.5)) {
+    if (decoys.length >= want) break;
+    if (!inName.has(c)) decoys.push(c);
+  }
+  while (decoys.length < want) {
+    const c = ALPHA[Math.floor(Math.random() * 26)];
+    if (!inName.has(c) && !decoys.includes(c)) decoys.push(c);
+  }
+  const tiles = [...rest, ...decoys];
+  for (let i = tiles.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+  }
+  const bank = G.el.querySelector('.golden-bank');
+  for (const letter of tiles) {
+    const t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'tile';
+    t.dataset.letter = letter;
+    t.textContent = letter;
+    bindAnimalsAct(t, () => tapGoldenTile(t));
+    bank.appendChild(t);
+  }
+  G.el.classList.add('tiles');
+}
+
+function tapGoldenTile(t) {
+  const G = state.animals?.golden;
+  if (!G || G.state === 'done' || t.classList.contains('used')) return;
+  if (G.state === 'offered') engageGolden('tiles');
+  if (t.dataset.letter === G.norm[G.idx]) { advanceGolden(t); return; }
+  G.wrongTile = true;
+  t.classList.remove('shake');
+  t.getBoundingClientRect();
+  t.classList.add('shake');
+  const now = performance.now();
+  if (now - G.lastPenaltyAt >= 1000) {
+    G.lastPenaltyAt = now;
+    G.clockEnd -= GOLDEN_PENALTY_MS;
+  }
+}
+
+function goldenCaught() {
+  const A = state.animals;
+  const G = A.golden;
+  G.state = 'done';
+  A.train.golden = 'done';
+  A.golden = null;
+  // ⭐ only when it's sure who spelled it: no wrong tile, no key mashing.
+  const star = !G.wrongTile && !G.burst;
+  const wagon = A.train.el.querySelector('.wagon.golden');
+  wagon.querySelector('.cargo').innerHTML = iconHtml(G.icon) + (star ? '<span class="star">⭐</span>' : '');
+  wagon.classList.add('full');
+  G.el.classList.add('caught');
+  say(G.word.toUpperCase(), { priority: true });
+  questDing();
+  confetti(30);
+  record('Golden');
+  A.train.caught++;
+  markSeen(G.word, star ? 's' : 'g');
+  A.caught.add(G.word);
+  aTimer(() => G.el.remove(), 1200);
+  tryDepart();
+}
+
+// Not caught in time: it winks and goes. No sad sound.
+function goldenLeave() {
+  const A = state.animals;
+  const G = A.golden;
+  if (!G || G.state === 'done') return;
+  G.state = 'done';
+  A.train.golden = 'done';
+  A.golden = null;
+  G.el.classList.add('leaving');
+  aTimer(() => G.el.remove(), 900);
+  tryDepart();
+}
+
+// ── Collection ──
+
+function markSeen(word, level) {
+  const t = effectiveTheme();
+  const m = animalsSeen[t] || (animalsSeen[t] = {});
+  if ((SEEN_RANK[m[word]] || 0) >= SEEN_RANK[level]) return;
+  m[word] = level;
+  localStorage.setItem(SEEN_KEY, JSON.stringify(animalsSeen));
+}
+
+// Each animal at its best rank across themes, as the parent dialog's grid shows it.
+function animalsSeenBest() {
+  const best = {};
+  for (const m of Object.values(animalsSeen)) {
+    for (const [w, l] of Object.entries(m)) if ((SEEN_RANK[l] || 0) > (SEEN_RANK[best[w]] || 0)) best[w] = l;
+  }
+  return best;
+}
+
+function animalsSeenSummary() {
+  const best = Object.values(animalsSeenBest());
+  return `${best.length} · 🌟 ${best.filter(l => l !== 'n').length}`;
+}
+
+// Every animal caught on this device, any theme, golden ones glowing.
+function animalsSeenGrid() {
+  const icons = {};
+  for (const t of Object.values(ANIMALS)) for (const list of Object.values(t)) for (const [w, i] of list) icons[w] = i;
+  for (const list of Object.values(GOLDEN)) for (const [w, i] of list) icons[w] = i;
+  return Object.entries(animalsSeenBest()).filter(([w]) => icons[w]).map(([w, l]) =>
+    `<span class="seen got${l !== 'n' ? ' gold' : ''}" title="${w}">${iconHtml(icons[w])}${l === 's' ? '<i>⭐</i>' : ''}</span>`
+  ).join('');
+}
+
+// After a round: the theme's animals, caught ones in colour, this round's
+// pulsing, golden ones glowing (⭐ first try). Gone after 4s or the next input.
+function showSeenCard(A) {
+  dismissSeenCard();
+  const m = animalsSeen[effectiveTheme()] || {};
+  const pool = animalPool();
+  const goldIcon = Object.fromEntries((GOLDEN[settings.lang] || GOLDEN.pt).map(([w, i]) => [w, i]));
+  const extra = Object.keys(m).filter(w => m[w] !== 'n' && goldIcon[w] && !pool.some(a => a.word === w));
+  const cell = (word, icon) => {
+    const l = m[word];
+    const cls = 'seen' + (l ? ' got' : '') + (l && l !== 'n' ? ' gold' : '') + (A.caught.has(word) ? ' new' : '');
+    return `<span class="${cls}">${iconHtml(icon)}${l === 's' ? '<i>⭐</i>' : ''}</span>`;
+  };
+  const card = document.createElement('div');
+  card.className = 'seen-card';
+  card.innerHTML = '<div class="seen-grid">' + pool.map(a => cell(a.word, a.icon)).join('') +
+    extra.map(w => cell(w, goldIcon[w])).join('') + '</div>';
+  document.body.appendChild(card);
+  const dismiss = () => dismissSeenCard();
+  seenCard = { card, dismiss, timers: [setTimeout(dismiss, 4000), setTimeout(() => {
+    window.addEventListener('keydown', dismiss, true);
+    window.addEventListener('pointerdown', dismiss, true);
+  }, 400)] };
+}
+
+function dismissSeenCard() {
+  if (!seenCard) return;
+  const { card, dismiss, timers } = seenCard;
+  seenCard = null;
+  for (const t of timers) clearTimeout(t);
+  window.removeEventListener('keydown', dismiss, true);
+  window.removeEventListener('pointerdown', dismiss, true);
+  card.remove();
+}
+
 // ─── INPUT ──────────────────────────────────────────────────────────────────
 
-function handleKey(rawKey) {
+// source: 'key' (a real keypress), 'repeat' (held key), 'synthetic' (tappable
+// letters, rain bubbles) or 'stage' (a tap on the empty stage, random letter).
+// Only the animals round and its typed command tell them apart.
+function handleKey(rawKey, source = 'synthetic') {
   if (settingsDialog.open) return;
 
   setCount(state.keyCount + 1);
   record('Keys');
+
+  if (state.animals) { animalsKey(rawKey, source); return; }
+  noteAnimalsActivity(source);
 
   // Letter
   if (/^[a-zA-ZÀ-ÿ]$/.test(rawKey)) {
@@ -1530,11 +2413,13 @@ function handleKey(rawKey) {
     }
     const matchedQuest = tryWordLetter(norm);
     const matchedBonus = tryBonusLetter(norm);
-    if (!typedThemeName(norm, matchedQuest || matchedBonus)) maybeSwitchTheme(matchedQuest || matchedBonus);
+    const progress = matchedQuest || matchedBonus;
+    if (typedAnimalsCommand(norm, source, progress)) return;
+    if (!typedThemeName(norm, progress)) maybeSwitchTheme(progress);
     return;
   }
   // Any other key breaks a theme name being typed; '-' is skipped so ARCO-ÍRIS works.
-  if (rawKey !== '-') typedLetters = '';
+  if (rawKey !== '-') { typedLetters = ''; animalsTyped = ''; }
 
   // Digit
   if (/^[0-9]$/.test(rawKey)) {
@@ -1558,6 +2443,7 @@ function handleKey(rawKey) {
     return;
   }
   if (rawKey === 'Enter') {
+    if (source === 'key' && animalsInviteShown()) { acceptAnimalsInvite(); return; }
     const synth = themeSynth();
     synth(523.25); synth(659.25); synth(783.99); // C-major triad
     return;
@@ -1599,7 +2485,8 @@ window.addEventListener('keydown', e => {
   // keydowns dispatched from onRainTap have isTrusted=false — skip them so
   // popping one bubble doesn't chain-pop another.
   if (e.isTrusted) popMatchingBubble(e.key);
-  handleKey(e.key);
+  if (e.isTrusted && !e.repeat && animalsRemoteOk(e)) return;
+  handleKey(e.key, e.repeat ? 'repeat' : e.isTrusted ? 'key' : 'synthetic');
 });
 
 // Cursor trail — pretty colored orbs that drift up and fade. Throttled and
@@ -1626,12 +2513,13 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return; // left button only (touch and pen report 0)
   if (e.target.closest('button, dialog, label, select, input, [data-key], #theme-picker, .ink-face')) return;
+  if (animalsActGuarded(e.clientX, e.clientY)) return; // second half of a round-button press
   spawnOriginOverride = {
     x: (e.clientX / window.innerWidth) * 100,
     y: (e.clientY / window.innerHeight) * 100,
   };
   const keys = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  handleKey(keys[Math.floor(Math.random() * keys.length)]);
+  handleKey(keys[Math.floor(Math.random() * keys.length)], 'stage');
 });
 
 // Mouse lockdown: only the left button does anything. No context menu, no
@@ -2062,6 +2950,11 @@ function applyTheme() {
   if (settings.theme !== 'auto') currentTheme = settings.theme;
   const themeChanged = appliedTheme !== null && appliedTheme !== effectiveTheme();
   appliedTheme = effectiveTheme();
+  // Any re-apply (a pick, a settings change) ends an animals round on the spot.
+  // A changed theme deals its own new word below, so the round's owed word is
+  // skipped then.
+  closeAnimals({ forced: true, dealOwedWord: !themeChanged });
+  cancelPendingAnimals({ dealOwedWord: !themeChanged });
   document.body.className = 'theme-' + effectiveTheme() +
     (settings.quests ? '' : ' no-quests') +
     (settings.childThemes ? '' : ' no-child-themes') +
@@ -2375,10 +3268,19 @@ function renderStatsTable() {
   document.getElementById('st-all-levelups').textContent = stats.allTimeLevelUps.toLocaleString();
   document.getElementById('st-today-bonus').textContent = stats.todayBonus.toLocaleString();
   document.getElementById('st-all-bonus').textContent = stats.allTimeBonus.toLocaleString();
+  for (const k of ['Catches', 'Trains', 'Golden']) {
+    document.getElementById('st-today-' + k.toLowerCase()).textContent = stats['today' + k].toLocaleString();
+    document.getElementById('st-all-' + k.toLowerCase()).textContent = stats['allTime' + k].toLocaleString();
+  }
+  document.getElementById('st-seen').textContent = animalsSeenSummary();
+  document.getElementById('st-seen-grid').innerHTML = animalsSeenGrid();
 }
 
 function openSettings() {
   inkCancelAll();
+  closeAnimals({ forced: true });
+  cancelPendingAnimals();
+  hideAnimalsInvite();
   document.getElementById('set-lang').value = settings.lang;
   document.getElementById('set-theme').value = settings.theme;
   document.getElementById('set-theme-interval').value = String(settings.themeIntervalMin);
@@ -2448,8 +3350,12 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   stats.date = todayStr();
   stats.todayKeys = 0; stats.todayWords = 0; stats.todayMath = 0;
   stats.todayLevelUps = 0; stats.todayBonus = 0;
+  stats.todayCatches = 0; stats.todayTrains = 0; stats.todayGolden = 0;
   stats.allTimeKeys = 0; stats.allTimeWords = 0; stats.allTimeMath = 0;
   stats.allTimeLevelUps = 0; stats.allTimeBonus = 0;
+  stats.allTimeCatches = 0; stats.allTimeTrains = 0; stats.allTimeGolden = 0;
+  animalsSeen = {};
+  localStorage.removeItem(SEEN_KEY);
   saveStats();
   renderStatsTable();
 });
@@ -2879,6 +3785,7 @@ function rainActive() {
   if (settings.fallingLetters === 'touch' && !rainAllowed) return false;
   if (!settings.quests) return false;
   if (settingsDialog.open) return false;
+  if (state.animals) return false;
   return !!(state.word || state.eq || state.bonus);
 }
 

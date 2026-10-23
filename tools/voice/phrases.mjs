@@ -10,8 +10,8 @@ import vm from 'node:vm';
 const src = readFileSync(new URL('../../app.js', import.meta.url), 'utf8');
 const end = src.indexOf('const WORD_MAX_LEVEL');
 if (end < 0) throw new Error('app.js layout changed: WORD_MAX_LEVEL not found');
-const { LETTERS, THEME_CONTENT, WORDS, PHRASES, THEME_NAMES } = vm.runInNewContext(
-  src.slice(0, end) + ';({ LETTERS, THEME_CONTENT, WORDS, PHRASES, THEME_NAMES })',
+const { LETTERS, THEME_CONTENT, WORDS, PHRASES, THEME_NAMES, ANIMALS, GOLDEN } = vm.runInNewContext(
+  src.slice(0, end) + ';({ LETTERS, THEME_CONTENT, WORDS, PHRASES, THEME_NAMES, ANIMALS, GOLDEN })',
   { window: {}, navigator: { userAgent: '', maxTouchPoints: 0 } },
 );
 const testVoice = src.match(/const t = settings\.lang === 'pt' \? '([^']+)' : '((?:[^'\\]|\\.)+)'/);
@@ -60,6 +60,18 @@ for (const lang of ['pt', 'en']) {
     }
   }
   for (const w of Object.values(WORDS[lang]).flat()) add(w, normalCase(w, lang));
+  // Animals round: the catch line ("L. Leão"), the letter on its own for the
+  // hint, the golden animal's name as it's spelled, and the start line.
+  const letterOf = word => word.normalize('NFD').replace(/[̀-ͯ]/g, '').charAt(0).toUpperCase();
+  for (const t of Object.values(ANIMALS)) {
+    for (const [word] of t[lang] || t.pt) {
+      const L = word.charAt(0).toUpperCase();
+      add(`${L}. ${word}`, `${LETTER_NAMES[lang][letterOf(word)] ?? L}. ${word}`);
+      add(letterOf(word), LETTER_NAMES[lang][letterOf(word)]);
+    }
+  }
+  for (const [word] of GOLDEN[lang]) add(word.toUpperCase(), word);
+  add(PHRASES[lang].animals_start, PHRASES[lang].animals_start);
   for (let d = 0; d <= 9; d++) add(String(d), String(d)); // digit keys and math answers
   add(PHRASES[lang].level_up, PHRASES[lang].level_up);
   for (const name of Object.values(THEME_NAMES[lang])) add(name, name); // child theme picker

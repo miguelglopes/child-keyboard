@@ -11,6 +11,7 @@ Inspired by [tinyfingers.net](https://tinyfingers.net/), with more depth so it g
 - **Math quest (bottom)** — an equation like `3 + 2 = ?` shows up. Press the right digit → celebration. Wrong digit → soft "try again" sound.
 - **Touch / click** — works the same as keys (random letter on tap).
 - **Drag to paint** — dragging a finger, the mouse or the Magic Remote (OK held) also leaves themed ink and plays notes that climb as it goes up. A closed loop comes alive: it gets a face, bounces and sings back the tune it was drawn with; tap the face to hear it again. The picture fades 10 s after the last stroke, and in non-stop play each stroke fades 20 s after it was drawn. With falling letters on, a touch swipe that pops bubbles leaves only a passing trail; with a mouse or the Magic Remote, hovering pops and holding the button draws.
+- **Animals round (*Os animais fugiram!*)** — now and then, after a word, animals peek out and get caught onto a train. Any key or tap lures the animal a hop closer; its own letter (or a tap on it) catches it at once. A golden animal on each train is caught by spelling its name. Typing `COMBOIO` starts one too. Design: [docs/animals-round.md](docs/animals-round.md).
 - **Counter** — total key smashes, bottom-right corner.
 - **Theme picker (top-right)** — the child taps the round character button and picks a theme from big picture tiles; 🎲 *Surpresa* goes back to auto rotation. Typing a theme's name (`MASHA`, `PANDA`, `MAR`, `ESPAÇO`…) switches to it too. A pick stays until the next pick.
 
