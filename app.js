@@ -1773,9 +1773,9 @@ function acceptAnimalsInvite() {
 // events — pointerdown, click, and on the TV an Enter too — so after an
 // activation its companions are swallowed for ACT_GUARD_MS at that spot, even
 // once the button is gone (a used tile hides, a caught animal flies off) and
-// the companion would land on the stage as a lure. A press elsewhere (the next
-// tile) still counts. The invitation is a round button too, so the guard also
-// works outside rounds — the tap it swallows there is the invite's own. No
+// the companion would land on the stage as a lure, start ink or pop a bubble.
+// A press elsewhere (the next tile) still counts. The invitation and the ink
+// sponge are round buttons too, so the guard also works outside rounds. No
 // stopPropagation: the stage ignores buttons itself, and ensureKiosk() must
 // still see the tap.
 const ACT_GUARD_MS = 400;
@@ -2542,11 +2542,13 @@ for (const type of ['gesturestart', 'gesturechange']) {
 // as it goes up. A closed loop comes alive: a face, a bounce, and it sings
 // back the tune it was drawn with, in the rhythm it was drawn; tap the face to
 // hear it again. The picture fades together 10s after the last stroke, and
-// during non-stop play each stroke goes 20s after it was drawn. Points,
-// notes and songs are all capped so the TV keeps up.
+// during non-stop play each stroke goes 20s after it was drawn. The sponge
+// button wipes it sooner; it's only there while a picture is. Points, notes
+// and songs are all capped so the TV keeps up.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const inkLayer = document.getElementById('ink');
+let inkLayer = document.getElementById('ink'); // replaced by a fresh one on a wipe
+const inkClearBtn = document.getElementById('ink-clear');
 // C4..C6 of the keyboard's C-major scale, low → high. Top of the screen plays
 // the highest note.
 const INK_NOTES = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88,
@@ -2690,6 +2692,7 @@ function inkRemoveStroke(s, fade) {
   inkStrokes = inkStrokes.filter(x => x !== s);
   inkPointCount -= s.pts.length;
   if (inkSong && inkSong.face === s.face) inkStopSong();
+  inkSyncSponge();
   if (!fade) { s.g.remove(); return; }
   s.g.classList.add('ink-gone');
   setTimeout(() => s.g.remove(), settings.reduceMotion ? 400 : 1200);
@@ -2706,6 +2709,7 @@ function inkEnd(id, complete) {
   if (complete && inkIsLoop(s.pts)) inkMakeCreature(s);
   inkAge(s);
   inkScheduleIdle();
+  inkSyncSponge();
 }
 
 // Non-stop drawing never lets the picture go idle, so strokes also age out one
@@ -2861,6 +2865,7 @@ function inkScheduleIdle() {
   if ([...inkPointers.values()].some(s => s.live)) return;
   inkIdleTimer = setTimeout(() => {
     inkLayer.classList.add('fading');
+    inkSyncSponge();
     inkClearTimer = setTimeout(() => {
       inkStopSong();
       for (const s of [...inkStrokes]) if (!s.live) inkRemoveStroke(s, false);
@@ -2873,12 +2878,49 @@ function inkRevive() {
   clearTimeout(inkIdleTimer);
   clearTimeout(inkClearTimer);
   inkLayer.classList.remove('fading');
+  inkSyncSponge();
 }
+
+// The sponge shows while a finished stroke is on screen and the picture isn't
+// already fading away by itself. Strokes still being drawn stay.
+function inkSyncSponge() {
+  inkClearBtn.classList.toggle('show',
+    !inkLayer.classList.contains('fading') && inkStrokes.some(s => !s.live));
+}
+
+// The whole layer fades as one, like the idle fade (one composited opacity,
+// not a transition per stroke), and strokes still being drawn — at most
+// INK_MAX_LIVE — move to a fresh layer on top. A quick run down the scale
+// goes with it.
+function inkWipe() {
+  inkStopSong();
+  const old = inkLayer;
+  inkLayer = svgEl('svg', { id: 'ink', 'aria-hidden': 'true' });
+  inkStrokes = inkStrokes.filter(s => {
+    if (s.live) { inkLayer.appendChild(s.g); return true; }
+    clearTimeout(s.ageTimer);
+    inkPointCount -= s.pts.length;
+    return false;
+  });
+  old.removeAttribute('id');
+  old.classList.add('ink-wipe', 'fading');
+  old.after(inkLayer);
+  setTimeout(() => old.remove(), settings.reduceMotion ? 400 : 1200);
+  inkSyncSponge();
+  if (settings.sound) {
+    const synth = themeSynth();
+    [1046.50, 783.99, 659.25, 523.25].forEach((f, i) => setTimeout(() => synth(f), i * 70));
+  }
+}
+// A round button: it goes as it's pressed, so the press's companion events
+// mustn't land on the stage as a letter.
+bindAnimalsAct(inkClearBtn, () => { if (inkClearBtn.classList.contains('show')) inkWipe(); });
 
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   if (settingsDialog.open || themePicker.classList.contains('open')) return;
   if (e.target.closest('button:not(.rain-bubble), dialog, label, select, input, [data-key]:not(.rain-bubble), #theme-picker')) return;
+  if (animalsActGuarded(e.clientX, e.clientY)) return; // a round button press's companion
   inkEnd(e.pointerId, true);
   inkPointers.set(e.pointerId, { live: false, x0: e.clientX, y0: e.clientY });
 });
@@ -3909,10 +3951,12 @@ function spawnRainBubble() {
   b.addEventListener('pointerenter', (e) => {
     if (Date.now() - Number(b.dataset.bornAt) < 250) return;
     if (inkHoldsBubbles(e)) return;
+    if (animalsActGuarded(e.clientX, e.clientY)) return; // uncovered by a round button that just went
     onRainTap(b, key, e.pointerId);
   });
   b.addEventListener('click', (e) => {
     e.stopPropagation();
+    if (animalsActGuarded(e.clientX, e.clientY)) return;
     onRainTap(b, key);
   });
   b.addEventListener('animationend', () => { b.remove(); updateNextRainMarker(); });
@@ -3944,6 +3988,7 @@ window.addEventListener('pointermove', (e) => {
   if (!el || !el.classList || !el.classList.contains('rain-bubble')) return;
   if (el.classList.contains('pop')) return;
   if (Date.now() - Number(el.dataset.bornAt || 0) < 250) return;
+  if (animalsActGuarded(e.clientX, e.clientY)) return;
   onRainTap(el, el.dataset.key, e.pointerId);
 });
 

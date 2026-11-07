@@ -570,8 +570,10 @@ body.reduce-motion .sparkle { animation: none; opacity: 0.3; }
 
 /* Ink sits just above the background: letter cards, quests and rain all
    stay on top of a drawing. Only creature faces take taps (.ink-hit). The
-   whole picture fades by transition, so a face tap can bring it back. */
-#ink {
+   whole picture fades by transition, so a face tap can bring it back; a
+   sponge wipe fades the old layer itself (.ink-wipe), which nothing revives. */
+#ink,
+.ink-wipe {
   position: fixed;
   inset: 0;
   width: 100%;
@@ -582,7 +584,9 @@ body.reduce-motion .sparkle { animation: none; opacity: 0.3; }
   contain: strict;
   transition: opacity 1.2s ease;
 }
-#ink.fading { opacity: 0; }
+#ink.fading,
+.ink-wipe.fading { opacity: 0; }
+.ink-wipe .ink-hit { pointer-events: none; }
 .ink-stroke { transition: opacity 1.2s ease; }
 .ink-stroke.ink-gone { opacity: 0; }
 .ink-gone .ink-hit { pointer-events: none; }
@@ -626,7 +630,42 @@ body.reduce-motion .sparkle { animation: none; opacity: 0.3; }
 }
 .ink-face.sing .ink-smile { display: none; }
 .ink-face.sing .ink-mouth { display: inline; }
+/* Sponge: wipes the picture. Bottom-left, clear of the math quest, counter
+   and pace; only there while there's something to wipe. */
+#ink-clear {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 110;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  font-size: 38px;
+  line-height: 1;
+  border: 4px solid var(--accent);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.4);
+  transition: opacity 0.3s ease, transform calc(0.35s * var(--motion)) cubic-bezier(.3, 1.5, .5, 1);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+#ink-clear.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+#ink-clear:focus { outline: none; }
+body.animals-on #ink-clear { display: none; }
+html.reduce-effects #ink-clear { box-shadow: none; }
 body.reduce-motion #ink,
+body.reduce-motion .ink-wipe,
 body.reduce-motion .ink-stroke { transition-duration: 0.4s; }
 body.reduce-motion .ink-creature.bounce { animation: none; }
 body.reduce-motion .ink-face.note .ink-mouth { animation: none; }
