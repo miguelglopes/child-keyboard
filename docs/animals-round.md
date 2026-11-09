@@ -177,12 +177,11 @@ sibling's keys can't take the drawing away; those dots get a white ring.
     tracing too.
   - A dot a finger reaches for the first time plays a soft note from its
     height, rate-limited like ink's notes, so a dot tap is never silent.
-    These notes feed the song.
   - A press that was already down when the shadow appeared traces too, and
     is never a tap. While the theme picker is open, tracing pauses, as ink
     does.
-  - **Completion:** every dot lit, or all but one with a finger on at least half
-    (then the last one lights).
+  - **Completion:** every dot lit, by fingers or pieces. No dot can be
+    skipped.
 - **Reward:**
   - Letter → instant.
   - A finger on at least half the dots → instant: traced.
@@ -262,9 +261,11 @@ flies to its wagon.
 stays behind in the picture as an ordinary ink creature:
 - It's an ink stroke along the dots in the theme's ink colours, filled, with
   googly eyes and a mouth, the same as a closed loop.
-- It bounces and sings the notes its tracing played: dot notes and its
-  strokes' notes, kept on the shadow as they play, so a stroke that ages out
-  keeps its notes. With fewer than 3, the notes are read off its shape.
+- It bounces and sings, like any ink creature, the opening (about 8 s, to
+  the end of a phrase) of one of the rain's Portuguese songs, picked at
+  random, never the previous creature's nor the one the falling letters are
+  on. A bubble popping stops it (the bubbles have their own song), and a tap
+  on its face sings it again.
 - A new creature waits for a priority voice line to finish before it sings,
   so the song comes after "G. Gato", not over it.
 - After that it's ink like any other: a tap on its face sings again, it ages
@@ -308,8 +309,8 @@ outline is one more way in, for a child who'd rather draw than spell.
   button, from the same extractor at the same picture size. Hit radius
   2.5vmin, half the shadow's: it's small and sits near the slots.
 - It shares the shadow's tracing: one pointer path lights dots on both, the
-  same lit/touched sets, notes and completion rule (all dots but one lit, a finger on
-  half). Lures never draw golden pieces; it has none.
+  same lit/touched sets and completion rule (every dot lit; it has no
+  pieces, so a finger lights them all).
 - A finger reaching a new dot is a go at it: it starts an attempt if it was
   only offered (the tile clock, 6 s), and each new dot refills the clock, so
   it doesn't wink off mid-drawing. So a toddler's single touch on a dot

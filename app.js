@@ -1649,7 +1649,6 @@ const GOLDEN_TILE_MAX_LETTERS = 8;
 const GOLDEN_BURST_KEYS = 5;         // this many keys inside a second = mashing, no ⭐
 const SHADOW_DOTS = 48;              // the shadow animal's outline
 const SHADOW_PIECE = SHADOW_DOTS / ANIMAL_HOPS; // dots a lure draws: 8 lures always finish it
-const SHADOW_MISSABLE = 1;           // dots that may stay unlit when a finger drew half of it
 const SHADOW_HOLD_MS = 3000;         // deadline: a newly lit dot this recent holds the rescue…
 const SHADOW_HOLD_MAX_MS = 15000;    // …up to this long past the deadline
 const SHADOW_ENTER_MS = 300;         // webOS: an Enter this close to a press is the press's
@@ -2220,12 +2219,12 @@ function shadowTargets() {
 }
 
 // What a traced outline keeps: n dots, lit (by anything) and touched (by a
-// finger), and the notes and strokes its tracing made.
+// finger), and the strokes its tracing made.
 function shadowTrack(n) {
   return {
     n, state: 'peek', lit: new Uint8Array(n), litCount: 0,
     touched: new Uint8Array(n), fingerLit: 0, lastFingerLitAt: -Infinity,
-    notes: [], strokes: new Set(),
+    strokes: new Set(),
     rainbow: effectiveTheme() === 'rainbow',
     color: getComputedStyle(document.body).getPropertyValue('--ink-1').trim(),
   };
@@ -2534,17 +2533,11 @@ function shadowPiece(an) {
 
 function shadowCheck(an) {
   if (an.state !== 'peek') return;
-  if (an.litCount < an.n && (an.litCount < an.n - SHADOW_MISSABLE || an.fingerLit < an.n / 2)) return;
+  if (an.litCount < an.n) return; // every dot, however they were lit
   if (an.golden) goldenDrawn(an);
   else shadowComplete(an, false, false);
 }
 
-// The notes its tracing played, for its song.
-function shadowNote(an, freq, at) {
-  if (!shadowTargets().includes(an)) return;
-  an.notes.push([freq, at]);
-  if (an.notes.length > INK_SONG_NOTES) an.notes.shift();
-}
 
 // Done with it. Caught by its drawing (fade): the strokes that traced it fade
 // as the outline takes over, and one still being drawn is cut — the rest of
@@ -2571,8 +2564,8 @@ function shadowRelease(an, fade = true) {
 
 // Done: all its dots light, and it goes to its wagon like any animal. When
 // fingers drew it, the outline stays behind in the picture as an ink
-// creature — a face, a bounce, and the tune it was traced with once the catch
-// line is over. A rescue isn't the child's: it just goes in.
+// creature — a face, a bounce, and a Portuguese song once the catch line is
+// over. A rescue isn't the child's: it just goes in.
 // Fingers lit at least half of it: the child drew it, whoever finished it.
 function shadowComplete(an, instant, rescue) {
   const traced = !rescue && an.fingerLit >= an.n / 2;
@@ -2596,7 +2589,6 @@ function shadowCreature(an) {
   if (s.frozen) { inkRemoveStroke(s, false); return; }
   s.fromShadow = true;
   s.box = boxOf(s.pts);
-  s.notes = an.notes;
   inkMakeCreature(s);
   inkAge(s);
   inkScheduleIdle();
@@ -2651,13 +2643,12 @@ function shadowTrace(p, id, x, y) {
     p.target = an;
     reached.push(an);
     if (an.golden) goldenDrawTouch();
-    // A dot tap is never silent; the notes go into its song.
+    // A dot tap is never silent.
     const now = performance.now();
     if (now - inkLastNoteAt >= inkLimits().noteGap) {
       const freq = inkNoteAt(an.dotsPx[lit][1]);
       themeSynth()(freq);
       inkLastNoteAt = now;
-      shadowNote(an, freq, now);
     }
   }
   const s = inkPointers.get(id);
@@ -3187,8 +3178,8 @@ for (const type of ['gesturestart', 'gesturechange']) {
 // ─── INK ────────────────────────────────────────────────────────────────────
 // Drag to paint. Taps stay exactly as above (letter at the finger); once a
 // pressed pointer has moved 8px it also leaves ink and plays notes that climb
-// as it goes up. A closed loop comes alive: a face, a bounce, and it sings
-// back the tune it was drawn with, in the rhythm it was drawn; tap the face to
+// as it goes up. A closed loop comes alive: a face, a bounce, and it sings the
+// opening of one of the Portuguese songs, picked at random; tap the face to
 // hear it again. The picture fades together 10s after the last stroke, and
 // during non-stop play each stroke goes 20s after it was drawn. The sponge
 // button wipes it sooner; it's only there while a picture is. Points, notes
@@ -3209,7 +3200,7 @@ const INK_MAX_LIVE = 3;        // fingers drawing at once
 const INK_IDLE_MS = 10000;     // picture fades this long after the last activity
 const INK_MAX_AGE_MS = 20000;  // …and each stroke on its own this long after it's drawn
 const INK_RAIN_QUIET_MS = 400; // ink stays silent after a bubble pops
-const INK_SONG_NOTES = 8;
+const INK_SONG_MS = 8000;      // a creature sings about this much of its song: the opening
 const inkLimits = () => settings.reduceEffects
   ? { spacing: 6, budget: 1500, noteGap: 160 }
   : { spacing: 4, budget: 5000, noteGap: 110 };
@@ -3264,7 +3255,7 @@ function inkStartStroke(c) {
     color: css.getPropertyValue('--ink-1').trim(),
     rainbow: effectiveTheme() === 'rainbow',
     pts: [[c.x0, c.y0]], pending: [], segStart: 0, seg: null,
-    travel: 0, notes: [], popped: !!c.popped,
+    travel: 0, popped: !!c.popped,
   };
   inkStrokes.push(s);
   inkPointCount++;
@@ -3318,9 +3309,6 @@ function inkFlushStroke(s, withNotes) {
   themeSynth()(freq);
   inkLastNoteAt = now;
   s.travel = 0;
-  s.notes.push([freq, now]);
-  if (s.notes.length > INK_SONG_NOTES) s.notes.shift();
-  if (s.shadow) shadowNote(s.shadow, freq, now);
 }
 
 // Over the point budget the oldest finished stroke fades out early to make
@@ -3379,6 +3367,7 @@ function inkHoldsBubbles(e) {
 }
 function inkBubblePopped(pointerId) {
   inkLastBubblePopAt = performance.now();
+  inkStopSong(); // the bubbles have their own song; a face tap brings it back
   for (const s of inkPointers.values()) if (s.live) s.travel = 0;
   const s = inkPointers.get(pointerId);
   if (s) s.popped = true;
@@ -3443,7 +3432,7 @@ function inkMakeCreature(s) {
   );
   s.g.appendChild(face);
   s.face = face;
-  s.song = inkSongFor(s);
+  s.song = inkSongFor();
   face.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !inkStrokes.includes(s)) return; // fading out early
     inkRevive();
@@ -3466,17 +3455,22 @@ function inkSingWhenQuiet(s) {
   inkSong = { face: s.face, timers: [setTimeout(() => inkSingWhenQuiet(s), wait)] };
 }
 
-// The recorded notes with their own gaps (clamped), or — when the loop was
-// drawn too small, too fast or through bubbles to record a tune — notes read
-// off the shape itself.
-function inkSongFor(s) {
-  if (s.notes.length >= 3) {
-    return s.notes.map(([freq, t], i) => [freq, i ? Math.max(120, Math.min(400, t - s.notes[i - 1][1])) : 0]);
-  }
+// The opening of one of the Portuguese songs, picked at random (not the
+// previous creature's, nor the one the rain is on): each note with the gap
+// before it. It runs on to a held
+// note past INK_SONG_MS, so it stops at the end of a phrase (by 10 s).
+let inkLastSong = -1;
+function inkSongFor() {
+  const pool = SONGS.map((_, j) => j).filter(j => j !== inkLastSong && j !== songIdx);
+  const i = inkLastSong = pickOne(pool);
+  const beat = 60000 / SONGS[i].bpm;
   const out = [];
-  for (let i = 0; i < 6; i++) {
-    const p = s.pts[Math.floor(i * (s.pts.length - 1) / 5)];
-    out.push([inkNoteAt(p[1]), i ? 150 : 0]);
+  let at = 0, gap = 0;
+  for (const [freq, beats] of SONGS[i].notes) {
+    out.push([freq, gap]);
+    gap = beats * beat;
+    at += gap;
+    if (at >= INK_SONG_MS && (beats >= 1 || at >= 1.25 * INK_SONG_MS)) break;
   }
   return out;
 }
@@ -3495,6 +3489,7 @@ function inkSing(s) {
     at += gap;
     timers.push(setTimeout(() => {
       themeSynth()(freq);
+      if (settings.reduceMotion) return; // no pulse to restart
       face.classList.remove('note');
       face.getBoundingClientRect(); // reflow, so the pulse restarts
       face.classList.add('note');
