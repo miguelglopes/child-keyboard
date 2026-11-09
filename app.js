@@ -1647,6 +1647,14 @@ const GOLDEN_PENALTY_MS = 1000;      // a wrong tile, at most once a second
 const GOLDEN_ATTEMPT_MAX_MS = 30000;
 const GOLDEN_TILE_MAX_LETTERS = 8;
 const GOLDEN_BURST_KEYS = 5;         // this many keys inside a second = mashing, no ⭐
+const SHADOW_DOTS = 48;              // the shadow animal's outline
+const SHADOW_PIECE = SHADOW_DOTS / ANIMAL_HOPS; // dots a lure draws: 8 lures always finish it
+const SHADOW_MISSABLE = 1;           // dots that may stay unlit when a finger drew half of it
+const SHADOW_HOLD_MS = 3000;         // deadline: a newly lit dot this recent holds the rescue…
+const SHADOW_HOLD_MAX_MS = 15000;    // …up to this long past the deadline
+const SHADOW_ENTER_MS = 300;         // webOS: an Enter this close to a press is the press's
+const SHADOW_EDGE_OVERLAP = 0.15;    // an earlier creature this much under a new outline (by area) is clear of it
+const GOLDEN_TRACE_DOTS = 32;        // the golden animal is small: fewer dots, closer in
 const INVITE_AFTER_MS = 240000;      // no round for this long despite play → invite
 const INVITE_MIN_ACTIVITY = 40;
 const INVITE_SHOW_MS = 20000;
@@ -1779,21 +1787,36 @@ function acceptAnimalsInvite() {
 // stopPropagation: the stage ignores buttons itself, and ensureKiosk() must
 // still see the tap.
 const ACT_GUARD_MS = 400;
+const TAP_WANDER_PX = 24;   // a tap-only button's press that strays this far is a drag
 const ACT_GUARD_PX = 30;
 let actGuard = null;
 function animalsActGuarded(x, y) {
   return !!actGuard && performance.now() < actGuard.until
     && Math.hypot(x - actGuard.x, y - actGuard.y) <= ACT_GUARD_PX;
 }
-function bindAnimalsAct(el, fn) {
+// tapOnly: it acts on the click alone, and not after a drag — a drag over the
+// golden animal is tracing it.
+function bindAnimalsAct(el, fn, { tapOnly = false } = {}) {
   el.dataset.animalsAct = '';
   el.animalsAct = fn;
+  el.animalsTapOnly = tapOnly;
   el.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
+    if (tapOnly) { el.pressedAt = [e.clientX, e.clientY]; el.pressMoved = false; return; }
     e.preventDefault();
     activateAnimalsAct(el, e.clientX, e.clientY);
   });
-  el.addEventListener('click', (e) => activateAnimalsAct(el, e.clientX, e.clientY));
+  // A drag that wandered off and came back (a loop drawn round it) is no tap.
+  // Further than a stroke's start, so a toddler's wobbly tap still counts.
+  if (tapOnly) el.addEventListener('pointermove', (e) => {
+    const at = el.pressedAt;
+    if (at && e.buttons && Math.hypot(e.clientX - at[0], e.clientY - at[1]) > TAP_WANDER_PX) el.pressMoved = true;
+  });
+  el.addEventListener('click', (e) => {
+    const at = el.pressedAt;
+    if (tapOnly && at && (el.pressMoved || Math.hypot(e.clientX - at[0], e.clientY - at[1]) > TAP_WANDER_PX)) return;
+    activateAnimalsAct(el, e.clientX, e.clientY);
+  });
 }
 function activateAnimalsAct(el, x, y) {
   const now = performance.now();
@@ -1807,8 +1830,14 @@ bindAnimalsAct(animalsInvite, () => { if (animalsInviteShown()) acceptAnimalsInv
 // The TV's OK can arrive as Enter with the cursor resting on a round button.
 // webOS only: on a desktop, Enter with the mouse over the animal is just Enter.
 let remotePointer = null;
+let remotePressAt = -Infinity, remoteOkTimer = 0;
 if (isWebOS) {
   window.addEventListener('pointermove', (e) => { remotePointer = [e.clientX, e.clientY]; }, { passive: true });
+  window.addEventListener('pointerdown', () => {
+    remotePressAt = performance.now();
+    if (remoteOkTimer) { aClear(remoteOkTimer); remoteOkTimer = 0; }
+  }, true);
+  window.addEventListener('pointerup', () => { remotePressAt = performance.now(); }, true);
 }
 function animalsRemoteOk(e) {
   if (!isWebOS || !remotePointer || (e.key !== 'Enter' && e.keyCode !== 13)) return false;
@@ -1816,6 +1845,19 @@ function animalsRemoteOk(e) {
   if (animalsActGuarded(x, y)) return true; // the Enter that came with a click
   const el = document.elementFromPoint(x, y)?.closest('[data-animals-act]');
   if (!el) return false;
+  // A tap-only button (the golden animal, which can be drawn over): OK held
+  // to trace it mustn't open it. Near a press it's the press's, and the
+  // press's click decides; otherwise it waits a moment for one.
+  if (el.animalsTapOnly) {
+    if (remoteOkTimer) aClear(remoteOkTimer);
+    remoteOkTimer = 0;
+    if (inkPointers.size || shadowPresses.size || performance.now() - remotePressAt < SHADOW_ENTER_MS) return true;
+    remoteOkTimer = aTimer(() => {
+      remoteOkTimer = 0;
+      if (el.isConnected) activateAnimalsAct(el, x, y);
+    }, SHADOW_ENTER_MS);
+    return true;
+  }
   activateAnimalsAct(el, x, y);
   return true;
 }
@@ -1865,6 +1907,7 @@ function closeAnimals({ forced = false, dealOwedWord = true } = {}) {
   if (!A) return;
   for (const id of A.timers) clearTimeout(id);
   state.animals = null;
+  shadowPresses.clear();
   animalsLastEndAt = performance.now();
   animalsTyped = '';
   animalsActivity = 0;
@@ -1990,12 +2033,13 @@ function tryDepart() {
 function onAnimalsDeadline() {
   const A = state.animals;
   A.deadlinePassed = true;
+  A.deadlineAt = performance.now();
   if (A.train.golden === 'none') A.train.golden = 'done';
   if (A.golden?.state === 'offered') goldenLeave();
   if (A.departing) return;
   if (A.train.filled === 0) {
     A.departing = true;
-    if (A.animal) { A.animal.el.remove(); A.animal.spot.remove(); A.animal = null; }
+    if (A.animal) { A.animal.el.remove(); A.animal.spot?.remove(); A.animal = null; }
     A.train.el.classList.add('leaving');
     aTimer(closeAnimals, settings.reduceMotion ? 700 : 1600);
     return;
@@ -2007,8 +2051,13 @@ function autoFill() {
   const A = state.animals;
   if (A.departing) return;
   if (A.train.filled >= TRAIN_WAGONS) { tryDepart(); return; }
-  if (A.animal?.state === 'peek') catchAnimal(false, { rescue: true });
-  else if (!A.animal) fillWagon(pickOne(A.pool));
+  const an = A.animal;
+  // A shadow being traced holds the rescue; one traced half-way or more is
+  // the child's catch when the hold runs out.
+  if (an?.state === 'peek' && !shadowHolds(an)) {
+    if (an.shadow && an.fingerLit >= an.n / 2) shadowComplete(an, false, false);
+    else catchAnimal(false, { rescue: true });
+  } else if (!an) fillWagon(pickOne(A.pool));
   aTimer(autoFill, AUTO_HOP_MS);
 }
 
@@ -2040,6 +2089,11 @@ function spawnBigAnimal() {
   if (!choices.length) choices = A.pool;
   const pick = pickOne(choices);
   A.lastAnimal = pick.word;
+  // Every animal escapes as a shadow to trace. A plain one hides instead only
+  // where there's no outline for it (a device without that emoji) or no room
+  // (a phone on its side).
+  const outline = shadowOutline(pick.icon);
+  if (outline && spawnShadow({ ...pick, outline })) return;
   const x = 28 + Math.random() * 44, y = 56;
   const spot = document.createElement('div');
   spot.className = 'animal-spot';
@@ -2075,6 +2129,7 @@ function lureAnimal() {
   if (now - an.lastHopAt < ANIMAL_HOP_GAP_MS) return;
   an.lastHopAt = now;
   an.hops++;
+  if (an.shadow) { shadowPiece(an); return; }
   if (an.hops >= ANIMAL_HOPS) { catchAnimal(false); return; }
   an.el.style.transform = towardSlot(an, nextWagon(), (an.hops / ANIMAL_HOPS) * 0.8);
   an.spot.classList.add('gone'); // out of hiding: the spot must not cover the badge
@@ -2093,16 +2148,22 @@ function lureAnimal() {
 // instant: its letter or a tap on it — a bigger reward than hopping in.
 // rescue: hopped in at the deadline, not caught by the child.
 function catchAnimal(instant, { rescue = false } = {}) {
-  const A = state.animals;
-  const an = A.animal;
+  const an = state.animals.animal;
   if (!an || an.state !== 'peek') return;
+  if (an.shadow) { shadowComplete(an, instant, rescue); return; }
+  landAnimal(an, instant, rescue);
+}
+
+// Into the next wagon.
+function landAnimal(an, instant, rescue) {
+  const A = state.animals;
   an.state = 'caught';
   A.animal = null;
   const slot = nextWagon();
   A.train.filled++;
   an.el.classList.add(instant ? 'caught-instant' : 'caught');
-  an.el.style.transform = towardSlot(an, slot, 1) + ' scale(0.4)';
-  an.spot.classList.add('gone');
+  an.el.style.transform = towardSlot(an, slot, 1) + (an.shadow ? ' scale(0.15)' : ' scale(0.4)');
+  an.spot?.classList.add('gone');
   if (!rescue) {
     spawnOriginOverride = { x: an.x, y: an.y - 12 };
     spawn(an.letter, an.icon);
@@ -2121,13 +2182,522 @@ function catchAnimal(instant, { rescue = false } = {}) {
   }
   aTimer(() => {
     an.el.remove();
-    an.spot.remove();
+    an.spot?.remove();
     slot.querySelector('.cargo').innerHTML = iconHtml(an.icon);
     slot.classList.add('full', instant ? 'instant' : 'plain');
     if (A.train.filled === 1 && A.train.golden === 'none' && !A.deadlinePassed) offerGolden();
     if (A.train.filled >= TRAIN_WAGONS) tryDepart();
     else aTimer(spawnBigAnimal, 500);
   }, settings.reduceMotion ? 200 : 450);
+}
+
+// ── Shadow animal ──
+// Every animal escapes as a dotted outline. Tracing it
+// catches it, and the drawing stays in the picture as an ink creature; its
+// letter still catches it at once, and any other key or tap draws a piece of
+// it instead of a hop. Design: docs/animals-round.md.
+
+const SHADOW_CANVAS = 96;
+const shadowOutlines = new Map(); // icon → outline, or null when it's unusable
+let shadowTofu = null;            // the mask of a glyph nobody has
+const shadowPresses = new Map();  // pointerId → a press while a shadow is out
+let shadowPointerAt = -Infinity;  // the last pointerdown/up while one was out
+
+function shadowOut() {
+  const an = state.animals?.animal;
+  return an?.shadow && an.state === 'peek' ? an : null;
+}
+
+// Everything that can be traced right now: the shadow animal, and the golden
+// animal's outline.
+function shadowTargets() {
+  const out = [];
+  const an = shadowOut();
+  if (an) out.push(an);
+  const t = state.animals?.golden?.trace;
+  if (t?.state === 'peek') out.push(t);
+  return out;
+}
+
+// What a traced outline keeps: n dots, lit (by anything) and touched (by a
+// finger), and the notes and strokes its tracing made.
+function shadowTrack(n) {
+  return {
+    n, state: 'peek', lit: new Uint8Array(n), litCount: 0,
+    touched: new Uint8Array(n), fingerLit: 0, lastFingerLitAt: -Infinity,
+    notes: [], strokes: new Set(),
+    rainbow: effectiveTheme() === 'rainbow',
+    color: getComputedStyle(document.body).getPropertyValue('--ink-1').trim(),
+  };
+}
+
+// The dots, in the outline's own 0..1 box.
+function shadowDotsSvg(t, cls, rPx) {
+  const svg = svgEl('svg', { class: cls, viewBox: '0 0 1 1' });
+  const dots = svgEl('g', { class: 'shadow-dots' });
+  const r = rPx / t.k;
+  t.dotEls = t.outline.pts.map(([x, y]) => {
+    const c = svgEl('circle', { class: 'shadow-dot', cx: x, cy: y, r, 'stroke-width': r * 0.35 });
+    dots.appendChild(c);
+    return c;
+  });
+  svg.appendChild(dots);
+  return svg;
+}
+
+// A press already down when an outline appears (a finger still drawing)
+// traces it from here on. It was drawing, so it's no tap.
+function shadowAdoptPresses() {
+  for (const [id, s] of inkPointers) {
+    if (shadowPresses.has(id)) continue;
+    const [x, y] = s.live ? s.pts[s.pts.length - 1] : [s.x0, s.y0];
+    const p = { an: shadowOut(), origin: null, x0: x, y0: y, x, y, moved: true, near: false, lit: false, target: null };
+    shadowPresses.set(id, p);
+    shadowTrace(p, id, x, y);
+  }
+}
+
+// Drawn the same way for the outline and for the picture, so they line up.
+function shadowGlyph(ctx, icon, dx = 0, dy = 0) {
+  ctx.font = '68px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(icon, SHADOW_CANVAS / 2 + dx, SHADOW_CANVAS / 2 + 4 + dy);
+}
+
+// The glyph's alpha, thickened by stamping it around a small circle so legs
+// and tails aren't fiddly to trace (no ctx.filter: older webOS).
+function shadowMask(icon) {
+  const S = SHADOW_CANVAS;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  for (let a = 0; a < 12; a++) shadowGlyph(ctx, icon, 4 * Math.cos(a * Math.PI / 6), 4 * Math.sin(a * Math.PI / 6));
+  shadowGlyph(ctx, icon);
+  const data = ctx.getImageData(0, 0, S, S).data;
+  const mask = new Uint8Array(S * S);
+  for (let i = 0; i < S * S; i++) mask[i] = data[i * 4 + 3] > 60 ? 1 : 0;
+  return mask;
+}
+
+function masksAlike(a, b) {
+  let both = 0, either = 0;
+  for (let i = 0; i < a.length; i++) { both += a[i] & b[i]; either += a[i] | b[i]; }
+  return !either || both / either > 0.9;
+}
+
+// Each device draws its own emoji, so the outline is read off this one's.
+// Cached per icon and dot count, failures too.
+function shadowOutline(icon, n = SHADOW_DOTS) {
+  const key = icon + '|' + n;
+  if (shadowOutlines.has(key)) return shadowOutlines.get(key);
+  let out = null;
+  if (!isImageIcon(icon)) {
+    try {
+      const mask = shadowMask(icon);
+      shadowTofu = shadowTofu || shadowMask('\u{10FFFD}');
+      if (!masksAlike(mask, shadowTofu)) out = traceOutline(mask, n);
+    } catch { out = null; }
+  }
+  shadowOutlines.set(key, out);
+  return out;
+}
+
+// The edge of the mask's largest blob, as n evenly spaced points
+// (0..1 of the canvas), clockwise from the topmost one. Null when it's no
+// animal: a box (a missing glyph), too small, or hardly an edge.
+function traceOutline(mask, n) {
+  const S = SHADOW_CANVAS;
+  const label = new Int32Array(S * S);
+  let best = 0, bestSize = 0, next = 1;
+  for (let i = 0; i < S * S; i++) {
+    if (!mask[i] || label[i]) continue;
+    const stack = [i];
+    label[i] = next;
+    let size = 0;
+    while (stack.length) {
+      const p = stack.pop();
+      size++;
+      const x = p % S;
+      for (const q of [x > 0 ? p - 1 : -1, x < S - 1 ? p + 1 : -1, p - S, p + S]) {
+        if (q >= 0 && q < S * S && mask[q] && !label[q]) { label[q] = next; stack.push(q); }
+      }
+    }
+    if (size > bestSize) { bestSize = size; best = next; }
+    next++;
+  }
+  if (!best) return null;
+  const inBlob = (x, y) => x >= 0 && y >= 0 && x < S && y < S && label[y * S + x] === best;
+  // Moore-neighbour walk round the blob from its first pixel.
+  let start = 0;
+  while (label[start] !== best) start++;
+  const sx = start % S, sy = (start / S) | 0;
+  const dirs = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]];
+  // Done on coming back to the start the way it first left it (Jacob's
+  // criterion): a one-pixel neck at the start would stop it short otherwise.
+  const edge = [[sx, sy]];
+  let x = sx, y = sy, back = 0, firstDir = -1;
+  for (let guard = 0; guard < 4 * S * S; guard++) {
+    let d = -1;
+    for (let k = 1; k <= 8; k++) {
+      const c = (back + k) % 8;
+      if (inBlob(x + dirs[c][0], y + dirs[c][1])) { d = c; break; }
+    }
+    if (d < 0) break; // a single pixel
+    if (x === sx && y === sy) {
+      if (d === firstDir) break;
+      if (firstDir < 0) firstDir = d;
+    }
+    x += dirs[d][0];
+    y += dirs[d][1];
+    back = (d + 4) % 8;
+    if (x !== sx || y !== sy) edge.push([x, y]);
+  }
+  if (edge.length < 12) return null;
+  const cum = [0];
+  for (let i = 1; i <= edge.length; i++) {
+    const [ax, ay] = edge[i - 1], [bx, by] = edge[i % edge.length];
+    cum.push(cum[i - 1] + Math.hypot(bx - ax, by - ay));
+  }
+  const total = cum[edge.length];
+  let pts = [];
+  for (let k = 0, j = 0; k < n; k++) {
+    const t = (k / n) * total;
+    while (cum[j + 1] < t) j++;
+    const f = (t - cum[j]) / ((cum[j + 1] - cum[j]) || 1);
+    const [ax, ay] = edge[j], [bx, by] = edge[(j + 1) % edge.length];
+    pts.push([(ax + (bx - ax) * f) / S, (ay + (by - ay) * f) / S]);
+  }
+  let minX = 1, minY = 1, maxX = 0, maxY = 0, area = 0, top = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [px, py] = pts[i], [qx, qy] = pts[(i + 1) % pts.length];
+    minX = Math.min(minX, px); maxX = Math.max(maxX, px);
+    minY = Math.min(minY, py); maxY = Math.max(maxY, py);
+    area += px * qy - qx * py;
+    if (py < pts[top][1]) top = i;
+  }
+  const w = maxX - minX, h = maxY - minY;
+  if (Math.max(w, h) < 0.5 || Math.abs(area) / 2 > 0.92 * w * h) return null;
+  pts = [...pts.slice(top), ...pts.slice(0, top)];
+  if (area < 0) pts = [pts[0], ...pts.slice(1).reverse()]; // clockwise on screen (y down)
+  return { pts, box: [minX, minY, maxX, maxY] };
+}
+
+// Between the golden column at its tallest (its tile bank can open later)
+// and the train. The gap above is more than the hit radius, so tracing the
+// top edge can't land on a tile.
+function shadowRegion() {
+  const A = state.animals;
+  const vh = window.innerHeight / 100, vw = window.innerWidth / 100;
+  let top = 4 * vh; // TV overscan
+  if (A.train.golden !== 'done') {
+    const G = A.golden;
+    const letters = G ? G.norm.length : GOLDEN_TILE_MAX_LETTERS;
+    const tiles = letters + 2 + Math.floor(letters / 3);
+    const tile = Math.min(8 * vh, 11 * vw), gap = vh;
+    const perRow = Math.max(1, Math.floor((Math.min(94 * vw, 110 * vh) + gap) / (tile + gap)));
+    const rows = Math.ceil(tiles / perRow);
+    const column = G ? G.el.querySelector('.golden-clock').getBoundingClientRect().bottom : 26 * vh;
+    top = column + gap + rows * tile + (rows - 1) * gap;
+  }
+  top += 8 * inkVmin();
+  const bottom = A.train.el.getBoundingClientRect().top - 2 * vh;
+  return { top, bottom, maxH: Math.min(36 * vh, bottom - top), maxW: 80 * vw };
+}
+
+// Sizes and places it, dots in px too. False when there's no room for one
+// (a phone on its side): that train gets a plain animal.
+function layoutShadow(an) {
+  const r = shadowRegion();
+  const [x0, y0, x1, y1] = an.outline.box;
+  const k = Math.min(r.maxH / (y1 - y0), r.maxW / (x1 - x0)); // px per canvas side
+  if ((y1 - y0) * k < 18 * window.innerHeight / 100) return false;
+  // At its spot across the field (shadowPlace), kept on screen, badge too:
+  // it's centred on the right edge, and reaches 6.6vh past it when it hints
+  // (11.2vh across, pulsing to 1.18×).
+  const half = (x1 - x0) / 2 * k, margin = 2 * window.innerWidth / 100;
+  const right = 6.6 * window.innerHeight / 100 + margin / 2;
+  const cx = Math.max(half + margin, Math.min(window.innerWidth - half - right, an.fx * window.innerWidth));
+  const left = cx - (x0 + x1) / 2 * k;
+  const top = (r.top + r.bottom) / 2 - (y0 + y1) / 2 * k;
+  an.k = k;
+  an.x = (left + k / 2) / window.innerWidth * 100;
+  an.y = (top + k / 2) / window.innerHeight * 100;
+  an.dotsPx = an.outline.pts.map(([px, py]) => [left + px * k, top + py * k]);
+  an.el.style.left = an.x + '%';
+  an.el.style.top = an.y + '%';
+  an.el.style.width = an.el.style.height = k + 'px';
+  const badge = an.el.querySelector('.animal-badge');
+  if (badge) { badge.style.left = x1 * k + 'px'; badge.style.top = y0 * k + 'px'; }
+  return true;
+}
+
+function spawnShadow(pick) {
+  const A = state.animals;
+  const el = document.createElement('div');
+  el.className = 'animal-big animal-shadow';
+  el.innerHTML = `<span class="animal-badge">${pick.letter}</span>`;
+  const an = { ...pick, ...shadowTrack(SHADOW_DOTS), shadow: true, el, spot: null, hops: 0, lastHopAt: -Infinity, fx: 0.5 };
+  if (!shadowPlace(an)) return false;
+  A.lastAnimal = pick.word;
+  const pic = document.createElement('canvas');
+  pic.className = 'shadow-pic';
+  pic.width = pic.height = Math.min(1024, Math.round(an.k * (window.devicePixelRatio || 1)));
+  const ctx = pic.getContext('2d');
+  ctx.scale(pic.width / SHADOW_CANVAS, pic.height / SHADOW_CANVAS);
+  shadowGlyph(ctx, pick.icon);
+
+  el.prepend(pic, shadowDotsSvg(an, 'shadow-svg', Math.max(4, 0.9 * inkVmin())));
+  animalsEl.querySelector('.animal-field').appendChild(el);
+  A.animal = an;
+  shadowMakeRoom(an);
+  shadowAdoptPresses();
+  return true;
+}
+
+function boxOf(pts) {
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return { l: Math.min(...xs), r: Math.max(...xs), t: Math.min(...ys), b: Math.max(...ys) };
+}
+function boxOverlap(a, b) {
+  return Math.max(0, Math.min(a.r, b.r) - Math.max(a.l, b.l)) * Math.max(0, Math.min(a.b, b.b) - Math.max(a.t, b.t));
+}
+// How much of a creature a new outline covers, ignoring a sliver at the
+// edges: its face, in the middle, stays clear of the dots.
+function creatureCovered(box, c) {
+  const f = boxOverlap(box, c) / ((c.r - c.l) * (c.b - c.t) || 1);
+  return f > SHADOW_EDGE_OVERLAP ? f : 0;
+}
+
+// Creatures earlier shadows left stay in the picture, so a new shadow goes
+// where they aren't: of a few spots across the field, the one that covers
+// fewest of them, the centre first. False when there's no room for one at all.
+function shadowPlace(an) {
+  const creatures = inkStrokes.filter(s => s.fromShadow && !s.live).map(s => s.box);
+  let best = null;
+  for (const fx of [0.5, 0.25, 0.75, 0.375, 0.625]) {
+    an.fx = fx;
+    if (!layoutShadow(an)) return false;
+    const box = boxOf(an.dotsPx);
+    const covered = creatures.filter(c => creatureCovered(box, c)).length;
+    if (!best || covered < best.covered) best = { fx, covered };
+    if (!covered) break;
+  }
+  an.fx = best.fx;
+  return layoutShadow(an);
+}
+
+// …and where it still lands on one (a narrow screen), that creature makes
+// way, so its face neither shows through the dots nor takes their taps.
+function shadowMakeRoom(an) {
+  const box = boxOf(an.dotsPx);
+  for (const s of [...inkStrokes]) {
+    if (s.fromShadow && !s.live && creatureCovered(box, s.box)) inkRemoveStroke(s, true);
+  }
+}
+
+function shadowColor(an, i) {
+  return an.rainbow ? TRAIL_COLORS[(i / SHADOW_PIECE | 0) % TRAIL_COLORS.length] : an.color;
+}
+
+// A finger's dots count for it even when a piece lit them first, so a sibling's
+// keys can't take the drawing away. True when a finger touched it anew.
+function shadowLight(an, i, finger) {
+  if (!an.lit[i]) {
+    an.lit[i] = 1;
+    an.litCount++;
+    an.dotEls[i].classList.add('lit');
+    an.dotEls[i].style.fill = shadowColor(an, i);
+  }
+  if (!finger || an.touched[i]) return false;
+  an.touched[i] = 1;
+  an.dotEls[i].classList.add('touched');
+  an.fingerLit++;
+  an.lastFingerLitAt = performance.now();
+  return true;
+}
+
+// A lure: the next unlit dots in outline order, from the top.
+function shadowPiece(an) {
+  for (let i = 0, n = 0; i < an.n && n < SHADOW_PIECE; i++) {
+    if (an.lit[i]) continue;
+    shadowLight(an, i, false);
+    if (!settings.reduceMotion) an.dotEls[i].style.transitionDelay = n * 40 + 'ms';
+    n++;
+  }
+  if (an.hops === ANIMAL_HINT_HOP) {
+    an.el.classList.add('hint');
+    say(an.letter);
+  }
+  shadowCheck(an);
+}
+
+function shadowCheck(an) {
+  if (an.state !== 'peek') return;
+  if (an.litCount < an.n && (an.litCount < an.n - SHADOW_MISSABLE || an.fingerLit < an.n / 2)) return;
+  if (an.golden) goldenDrawn(an);
+  else shadowComplete(an, false, false);
+}
+
+// The notes its tracing played, for its song.
+function shadowNote(an, freq, at) {
+  if (!shadowTargets().includes(an)) return;
+  an.notes.push([freq, at]);
+  if (an.notes.length > INK_SONG_NOTES) an.notes.shift();
+}
+
+// Done with it. Caught by its drawing (fade): the strokes that traced it fade
+// as the outline takes over, and one still being drawn is cut — the rest of
+// that drag is ordinary ink. Otherwise (the golden animal spelled or gone)
+// they just stay as ordinary ink. Waiting taps aimed at a shadow animal are
+// dropped when they end (shadowPressEnd), and so is its waiting Enter.
+function shadowRelease(an, fade = true) {
+  if (!an.golden) shadowDropEnter();
+  for (const [id, s] of inkPointers) {
+    if (!s.live || s.shadow !== an) continue;
+    if (!fade) { s.shadow = null; continue; }
+    const pts = s.pending.length ? s.pending : s.pts;
+    const [x0, y0] = pts[pts.length - 1];
+    s.live = false;
+    inkPointers.set(id, { live: false, x0, y0 });
+  }
+  for (const s of an.strokes) {
+    if (fade && inkStrokes.includes(s)) inkRemoveStroke(s, true);
+    else s.shadow = null;
+  }
+  an.strokes.clear();
+  inkScheduleIdle();
+}
+
+// Done: all its dots light, and it goes to its wagon like any animal. When
+// fingers drew it, the outline stays behind in the picture as an ink
+// creature — a face, a bounce, and the tune it was traced with once the catch
+// line is over. A rescue isn't the child's: it just goes in.
+// Fingers lit at least half of it: the child drew it, whoever finished it.
+function shadowComplete(an, instant, rescue) {
+  const traced = !rescue && an.fingerLit >= an.n / 2;
+  shadowRelease(an);
+  for (let i = 0; i < an.n; i++) shadowLight(an, i, false);
+  an.el.classList.add('done');
+  landAnimal(an, instant || traced, rescue);
+  if (traced) shadowCreature(an);
+}
+
+// An ink stroke along the outline, in the ink's colours, with a face.
+function shadowCreature(an) {
+  const pts = an.dotsPx.map(([x, y]) => [Math.round(x), Math.round(y)]);
+  pts.push(pts[0]);
+  const s = inkStartStroke({ x0: pts[0][0], y0: pts[0][1] });
+  s.pending = pts.slice(1);
+  inkFlushStroke(s, false);
+  s.live = false;
+  // No room in the ink (the TV's budget, full of strokes still being drawn):
+  // no half a creature.
+  if (s.frozen) { inkRemoveStroke(s, false); return; }
+  s.fromShadow = true;
+  s.box = boxOf(s.pts);
+  s.notes = an.notes;
+  inkMakeCreature(s);
+  inkAge(s);
+  inkScheduleIdle();
+  inkSyncSponge();
+}
+
+// The deadline waits while a finger is still lighting new dots, up to a point.
+function shadowHolds(an) {
+  const now = performance.now();
+  return !!an.shadow && now - an.lastFingerLitAt < SHADOW_HOLD_MS
+    && now - state.animals.deadlineAt < SHADOW_HOLD_MAX_MS;
+}
+
+// Every press while something can be traced is tracked from its pointerdown
+// (shadowPressDown, before anything else sees it — a press on the golden
+// animal's button traces too). A stage press's lure then waits for its
+// release.
+function shadowPressDown(e) {
+  if (!shadowTargets().length) return;
+  const p = { an: shadowOut(), origin: null, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, near: false, lit: false, target: null };
+  shadowPresses.set(e.pointerId, p);
+  shadowTrace(p, e.pointerId, e.clientX, e.clientY);
+}
+function shadowPressStart(e, origin) {
+  const p = shadowPresses.get(e.pointerId);
+  if (!p) return false;
+  p.origin = origin;
+  return true;
+}
+
+// Dots within the hit radius of the pointer's path since its last position
+// light up. Raw positions, not ink points: ink stops drawing at its limits,
+// tracing doesn't.
+function shadowTrace(p, id, x, y) {
+  const ax = p.x, ay = p.y, dx = x - ax, dy = y - ay, len2 = dx * dx + dy * dy;
+  p.x = x;
+  p.y = y;
+  if (Math.hypot(x - p.x0, y - p.y0) > INK_START_PX) p.moved = true;
+  const reached = [];
+  for (const an of shadowTargets()) {
+    const R = (an.golden ? 2.5 : 5) * inkVmin();
+    let lit = -1;
+    for (let i = 0; i < an.n; i++) {
+      const [qx, qy] = an.dotsPx[i];
+      const t = len2 ? Math.max(0, Math.min(1, ((qx - ax) * dx + (qy - ay) * dy) / len2)) : 0;
+      if (Math.hypot(ax + t * dx - qx, ay + t * dy - qy) > R) continue;
+      p.near = true;
+      if (shadowLight(an, i, true)) lit = i;
+    }
+    if (lit < 0) continue;
+    p.lit = true;
+    p.target = an;
+    reached.push(an);
+    if (an.golden) goldenDrawTouch();
+    // A dot tap is never silent; the notes go into its song.
+    const now = performance.now();
+    if (now - inkLastNoteAt >= inkLimits().noteGap) {
+      const freq = inkNoteAt(an.dotsPx[lit][1]);
+      themeSynth()(freq);
+      inkLastNoteAt = now;
+      shadowNote(an, freq, now);
+    }
+  }
+  const s = inkPointers.get(id);
+  const t = p.target;
+  if (t && s?.live && !s.shadow && shadowTargets().includes(t)) { s.shadow = t; t.strokes.add(s); }
+  for (const an of reached) shadowCheck(an);
+}
+
+// A press that drew on an outline (lit a dot, or moved along it) was
+// drawing. Anything else was a tap, however it smeared: its lure now —
+// unless the shadow animal it was aimed at has been caught meanwhile.
+function shadowPressEnd(id, complete) {
+  const p = shadowPresses.get(id);
+  if (!p) return;
+  shadowPresses.delete(id);
+  if (!complete || !p.origin || (p.an && p.an !== shadowOut()) || (p.near && (p.lit || p.moved))) return;
+  spawnOriginOverride = p.origin;
+  handleKey(ALPHA[Math.floor(Math.random() * 26)], 'stage');
+}
+
+// webOS: OK can come as an Enter as well as a press, either side of it. Near
+// a press it's the press's; otherwise its piece waits a moment, in case the
+// press is still to come.
+function shadowHoldsEnter(e) {
+  if (!isWebOS || (e.key !== 'Enter' && e.keyCode !== 13)) return false;
+  if (!shadowTargets().length) return false;
+  const an = shadowOut(); // null with only the golden animal's outline out
+  const A = state.animals;
+  if (shadowPresses.size || inkPointers.size || performance.now() - shadowPointerAt < SHADOW_ENTER_MS) return true;
+  shadowDropEnter();
+  A.shadowEnter = aTimer(() => {
+    A.shadowEnter = 0;
+    if (shadowOut() === an) handleKey(e.key, 'key');
+  }, SHADOW_ENTER_MS);
+  return true;
+}
+
+function shadowDropEnter() {
+  const A = state.animals;
+  if (A?.shadowEnter) { aClear(A.shadowEnter); A.shadowEnter = 0; }
 }
 
 // ── Golden animal ──
@@ -2147,12 +2717,18 @@ function offerGolden() {
     '<div class="golden-clock"><div class="golden-clock-bar"></div></div>' +
     '<div class="golden-bank"></div>';
   animalsEl.querySelector('.golden-band').appendChild(el);
-  bindAnimalsAct(el.querySelector('.golden-animal'), () => engageGolden('tiles'));
+  bindAnimalsAct(el.querySelector('.golden-animal'), () => engageGolden('tiles'), { tapOnly: true });
+  // An earlier golden animal's creature, where this one now sits, makes way.
+  // Offsets, not its box: it's still flying in.
+  const btn = el.querySelector('.golden-animal'), band = el.parentElement.getBoundingClientRect();
+  const bl = band.left + btn.offsetLeft, bt = band.top + btn.offsetTop;
+  shadowMakeRoom({ dotsPx: [[bl, bt], [bl + btn.offsetWidth, bt + btn.offsetHeight]] });
   A.golden = {
     ...g, el, idx: 0, state: 'offered', tiles: false, wrongTile: false, burst: false,
     keyTimes: [], clockEnd: 0, letterMs: GOLDEN_LETTER_MS.key, lastPenaltyAt: -Infinity, startedAt: 0,
   };
   A.golden.noticeTimer = aTimer(goldenLeave, GOLDEN_NOTICE_MS);
+  aTimer(() => goldenTraceStart(A.golden), 700); // once it has settled in
   aTimer(() => { if (A.golden?.el === el && A.golden.idx === 0) revealGoldenSlot(0, true); }, GOLDEN_HINT_MS);
 }
 
@@ -2173,6 +2749,7 @@ function engageGolden(mode) {
     G.letterMs = GOLDEN_LETTER_MS.tiles;
     if (!G.tiles) openGoldenBank();
   }
+  if (mode === 'draw') G.letterMs = GOLDEN_LETTER_MS.tiles;
   if (G.state !== 'offered') return;
   G.state = 'attempt';
   A.train.golden = 'attempt';
@@ -2284,8 +2861,10 @@ function goldenCaught() {
   G.state = 'done';
   A.train.golden = 'done';
   A.golden = null;
-  // ⭐ only when it's sure who spelled it: no wrong tile, no key mashing.
-  const star = !G.wrongTile && !G.burst;
+  goldenTraceEnd(G);
+  // ⭐ only when it's sure who spelled it: no wrong tile, no key mashing. A
+  // drawn one wasn't spelled.
+  const star = !G.wrongTile && !G.burst && !G.drawn;
   const wagon = A.train.el.querySelector('.wagon.golden');
   wagon.querySelector('.cargo').innerHTML = iconHtml(G.icon) + (star ? '<span class="star">⭐</span>' : '');
   wagon.classList.add('full');
@@ -2309,9 +2888,71 @@ function goldenLeave() {
   G.state = 'done';
   A.train.golden = 'done';
   A.golden = null;
+  goldenTraceEnd(G);
   G.el.classList.add('leaving');
   aTimer(() => G.el.remove(), 900);
   tryDepart();
+}
+
+// Drawing it: its outline in small dots round it. Spelling still catches it;
+// tracing it catches it too, and leaves its creature in the picture. A finger
+// on its dots counts as having a go: the attempt's clock refills with each
+// new dot, so it doesn't wink off mid-drawing.
+function goldenTraceStart(G) {
+  if (!G || G !== state.animals.golden || G.state === 'done' || G.trace) return;
+  const outline = shadowOutline(G.icon, GOLDEN_TRACE_DOTS);
+  if (!outline) return;
+  const t = { ...shadowTrack(GOLDEN_TRACE_DOTS), golden: true, outline };
+  layoutGoldenTrace(t, G);
+  t.svg = shadowDotsSvg(t, 'golden-trace', Math.max(2.5, 0.45 * inkVmin()));
+  layoutGoldenTrace(t, G);
+  animalsEl.querySelector('.animal-field').appendChild(t.svg);
+  G.trace = t;
+  shadowMakeRoom(t);
+  shadowAdoptPresses();
+}
+
+// Round the golden animal's button, scaled the way the glyph was drawn on
+// the outline's canvas. Offsets, not its box: the button wiggles.
+function layoutGoldenTrace(t, G) {
+  const btn = G.el.querySelector('.golden-animal');
+  const band = G.el.parentElement.getBoundingClientRect();
+  const cx = band.left + btn.offsetLeft + btn.offsetWidth / 2;
+  const cy = band.top + btn.offsetTop + btn.offsetHeight / 2;
+  const k = btn.offsetHeight / 68 * SHADOW_CANVAS; // 68px glyph on the 96px canvas
+  const [x0, y0, x1, y1] = t.outline.box;
+  const left = cx - (x0 + x1) / 2 * k, top = cy - (y0 + y1) / 2 * k;
+  t.k = k;
+  t.dotsPx = t.outline.pts.map(([px, py]) => [left + px * k, top + py * k]);
+  if (t.svg) Object.assign(t.svg.style, { left: left + 'px', top: top + 'px', width: k + 'px', height: k + 'px' });
+}
+
+function goldenDrawTouch() {
+  const G = state.animals.golden;
+  if (!G || G.state === 'done') return;
+  if (G.state === 'offered') engageGolden('draw');
+  else G.clockEnd = Math.max(G.clockEnd, performance.now() + G.letterMs);
+}
+
+function goldenDrawn(t) {
+  const G = state.animals.golden;
+  t.state = 'done';
+  shadowRelease(t);
+  for (let i = 0; i < t.n; i++) shadowLight(t, i, false);
+  G.drawn = true;
+  goldenCaught();
+  shadowCreature(t);
+}
+
+// Its dots go with it. Spelled or gone, the strokes that traced it stay as
+// ordinary ink.
+function goldenTraceEnd(G) {
+  const t = G.trace;
+  if (!t) return;
+  G.trace = null;
+  if (t.state === 'peek') shadowRelease(t, false);
+  t.state = 'done';
+  t.svg.remove();
 }
 
 // ── Collection ──
@@ -2486,6 +3127,7 @@ window.addEventListener('keydown', e => {
   // popping one bubble doesn't chain-pop another.
   if (e.isTrusted) popMatchingBubble(e.key);
   if (e.isTrusted && !e.repeat && animalsRemoteOk(e)) return;
+  if (e.isTrusted && !e.repeat && shadowHoldsEnter(e)) return;
   handleKey(e.key, e.repeat ? 'repeat' : e.isTrusted ? 'key' : 'synthetic');
 });
 
@@ -2512,12 +3154,18 @@ window.addEventListener('pointermove', (e) => {
 // Pointer/touch on stage = random key, spawned at the pointer's location
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return; // left button only (touch and pen report 0)
-  if (e.target.closest('button, dialog, label, select, input, [data-key], #theme-picker, .ink-face')) return;
+  if (e.target.closest('button, dialog, label, select, input, [data-key], #theme-picker')) return;
+  // A creature's face sings when tapped; in a round the tap is a lure as well.
+  if (!state.animals && e.target.closest('.ink-face')) return;
   if (animalsActGuarded(e.clientX, e.clientY)) return; // second half of a round-button press
-  spawnOriginOverride = {
+  const origin = {
     x: (e.clientX / window.innerWidth) * 100,
     y: (e.clientY / window.innerHeight) * 100,
   };
+  // With a shadow animal out, the tap waits for its release: a press that
+  // draws on the outline isn't a tap.
+  if (shadowPressStart(e, origin)) return;
+  spawnOriginOverride = origin;
   const keys = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   handleKey(keys[Math.floor(Math.random() * keys.length)], 'stage');
 });
@@ -2672,6 +3320,7 @@ function inkFlushStroke(s, withNotes) {
   s.travel = 0;
   s.notes.push([freq, now]);
   if (s.notes.length > INK_SONG_NOTES) s.notes.shift();
+  if (s.shadow) shadowNote(s.shadow, freq, now);
 }
 
 // Over the point budget the oldest finished stroke fades out early to make
@@ -2706,7 +3355,9 @@ function inkEnd(id, complete) {
   inkFlushStroke(s, complete);
   s.live = false;
   if (s.popped) { inkRemoveStroke(s, true); inkScheduleIdle(); return; }
-  if (complete && inkIsLoop(s.pts)) inkMakeCreature(s);
+  // A stroke that traced the shadow animal doesn't grow a face of its own.
+  const tracedShadow = s.shadow && shadowTargets().includes(s.shadow);
+  if (complete && !tracedShadow && inkIsLoop(s.pts)) inkMakeCreature(s);
   inkAge(s);
   inkScheduleIdle();
   inkSyncSponge();
@@ -2803,11 +3454,13 @@ function inkMakeCreature(s) {
   inkSingWhenQuiet(s);
 }
 
-// A new creature sings once the rain-quiet window is over, so its song doesn't
-// land on the bubble melody. The wait counts as its song: anything that stops
-// songs (a face tap, settings, the stroke going) cancels it too.
+// A new creature sings once the rain-quiet window is over and no priority line
+// (a catch) is speaking, so its song doesn't land on the bubble melody or the
+// voice. The wait counts as its song: anything that stops songs (a face tap,
+// settings, the stroke going) cancels it too.
 function inkSingWhenQuiet(s) {
-  const wait = INK_RAIN_QUIET_MS - (performance.now() - inkLastBubblePopAt);
+  let wait = INK_RAIN_QUIET_MS - (performance.now() - inkLastBubblePopAt);
+  if (voiceBusy) wait = Math.max(wait, 150);
   if (wait <= 0) { inkSing(s); return; }
   inkStopSong();
   inkSong = { face: s.face, timers: [setTimeout(() => inkSingWhenQuiet(s), wait)] };
@@ -2919,8 +3572,10 @@ bindAnimalsAct(inkClearBtn, () => { if (inkClearBtn.classList.contains('show')) 
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   if (settingsDialog.open || themePicker.classList.contains('open')) return;
-  if (e.target.closest('button:not(.rain-bubble), dialog, label, select, input, [data-key]:not(.rain-bubble), #theme-picker')) return;
-  if (animalsActGuarded(e.clientX, e.clientY)) return; // a round button press's companion
+  // The golden animal is a round button, but drawing over it traces it.
+  const onGolden = !!e.target.closest('.golden-animal');
+  if (!onGolden && e.target.closest('button:not(.rain-bubble), dialog, label, select, input, [data-key]:not(.rain-bubble), #theme-picker')) return;
+  if (!onGolden && animalsActGuarded(e.clientX, e.clientY)) return; // a round button press's companion
   inkEnd(e.pointerId, true);
   inkPointers.set(e.pointerId, { live: false, x0: e.clientX, y0: e.clientY });
 });
@@ -2961,6 +3616,48 @@ window.addEventListener('pointerup', (e) => inkEnd(e.pointerId, true));
 window.addEventListener('pointercancel', (e) => inkEnd(e.pointerId, false));
 window.addEventListener('blur', inkCancelAll);
 document.addEventListener('visibilitychange', () => { if (document.hidden) inkCancelAll(); });
+
+// Tracing outlines. After ink's handlers, so a press that has just become a
+// stroke gets marked as tracing on the same move. The pointerdown is a capture
+// listener, ahead of the round buttons and the stage handler: every press is
+// tracked from the start (one on the golden animal traces too), and a press
+// whose pointerup never came (a mouse released outside the window) can't fire
+// its tap from a later press.
+window.addEventListener('pointerdown', (e) => {
+  shadowPresses.delete(e.pointerId);
+  if (e.button !== 0 || !shadowTargets().length) return;
+  shadowPointerAt = performance.now();
+  shadowDropEnter();
+  shadowPressDown(e);
+}, true);
+window.addEventListener('pointermove', (e) => {
+  const p = shadowPresses.get(e.pointerId);
+  if (!p) return;
+  if (e.buttons === 0) { shadowPressEnd(e.pointerId, true); return; }
+  if (settingsDialog.open || themePicker.classList.contains('open')) return;
+  const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const ev of coalesced.length ? coalesced : [e]) {
+    if (shadowPresses.get(e.pointerId) !== p) return; // it just completed
+    shadowTrace(p, e.pointerId, ev.clientX, ev.clientY);
+  }
+});
+window.addEventListener('pointerup', (e) => {
+  if (shadowTargets().length) shadowPointerAt = performance.now();
+  shadowPressEnd(e.pointerId, true);
+});
+window.addEventListener('pointercancel', (e) => shadowPressEnd(e.pointerId, false));
+function shadowDropPresses() {
+  shadowPresses.clear();
+  shadowDropEnter();
+}
+window.addEventListener('blur', shadowDropPresses);
+document.addEventListener('visibilitychange', () => { if (document.hidden) shadowDropPresses(); });
+window.addEventListener('resize', () => {
+  const an = shadowOut();
+  if (an) layoutShadow(an);
+  const G = state.animals?.golden;
+  if (G?.trace) layoutGoldenTrace(G.trace, G);
+});
 
 // ─── PARENT GATE ────────────────────────────────────────────────────────────
 // 3-second hold of the top-left corner opens settings. That's the whole gate —

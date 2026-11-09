@@ -662,7 +662,13 @@ body.reduce-motion .sparkle { animation: none; opacity: 0.3; }
   transform: none;
 }
 #ink-clear:focus { outline: none; }
-body.animals-on #ink-clear { display: none; }
+/* In a round the train runs along the bottom (over this corner in portrait),
+   so the sponge moves up, under the parent corner. A small phone in portrait
+   has the golden tiles there: no sponge in the round. */
+body.animals-on #ink-clear { bottom: auto; top: 104px; }
+@media (orientation: portrait) and (max-height: 700px) {
+  body.animals-on #ink-clear { display: none; }
+}
 html.reduce-effects #ink-clear { box-shadow: none; }
 body.reduce-motion #ink,
 body.reduce-motion .ink-wipe,
@@ -1753,6 +1759,47 @@ body.animals-on .spawn { font-size: clamp(1.3rem, 3.4vw, 3rem); }
   pointer-events: none;
 }
 .animal-big.caught-instant .animal-icon { text-shadow: 0 0 0.25em #fff, 0 0 0.5em var(--accent); }
+/* Shadow animal: a dotted outline to trace, the picture faint inside.
+   Nothing in it takes a tap (#animals has pointer-events: none and it isn't
+   a button). Sized and placed by app.js; once caught (.done) the picture
+   shows in full on its way to the wagon. */
+.shadow-pic,
+.shadow-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.shadow-svg { overflow: visible; }
+.shadow-pic {
+  opacity: 0.3;
+  transition: opacity calc(0.3s * var(--motion)) ease;
+}
+.animal-shadow.done .shadow-pic { opacity: 1; }
+.animal-shadow.done .shadow-svg { display: none; }
+.shadow-dot {
+  fill: rgba(255, 255, 255, 0.85);
+  stroke: rgba(0, 0, 0, 0.35);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform calc(0.25s * var(--motion)) ease-out, fill calc(0.25s * var(--motion)) ease;
+}
+.shadow-dot.lit { transform: scale(1.5); }
+/* A finger has been on it (a piece may have lit it first). */
+.shadow-dot.touched { stroke: #fff; }
+/* The golden animal's outline: placed in px by app.js. A drag that starts on
+   the animal itself is tracing, not a pan. */
+.golden-trace {
+  position: absolute;
+  overflow: visible;
+}
+#animals .golden-animal { touch-action: none; }
+/* At the outline's top-right corner (left/top set in app.js). */
+.animal-shadow .animal-badge {
+  right: auto;
+  margin: -0.5em 0 0 -0.75em;
+}
+
 /* In front of the animal's lower part only, so its face and badge show. */
 .animal-spot {
   position: absolute;
@@ -2025,6 +2072,9 @@ body.reduce-motion .animal-big.hint .animal-badge,
 body.reduce-motion #animals .golden-animal,
 body.reduce-motion .invite-animal,
 body.reduce-motion .seen.new { animation: none; }
+body.reduce-motion .shadow-dot,
+body.reduce-motion .shadow-pic,
+html.reduce-effects .shadow-dot { transition: none; }
 /* TV: no glows or filters; the hops stay translate-only (set in app.js). */
 html.reduce-effects .animal-icon,
 html.reduce-effects #animals .golden-animal,
